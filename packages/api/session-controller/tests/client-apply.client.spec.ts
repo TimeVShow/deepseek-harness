@@ -84,7 +84,7 @@ describe('Session Controller Client apply', () => {
     const connected = vi.spyOn(ClientSessions.prototype, 'handleConnected')
     const sessionId = sid('immediate-baseline')
     mock.remote.session.list.mockResolvedValue(ok({ items: [{
-      sessionId, updatedAt: 1, running: false, blank: false, agentAvailable: true,
+      sessionId, updatedAt: 1, running: false, blank: false, occupied: false, agentAvailable: true,
     }] }))
     let projection = { asOfSeq: 20, values: { title: 'Before restart' } }
     mock.stream(CONTROL, (_args, stream) => {

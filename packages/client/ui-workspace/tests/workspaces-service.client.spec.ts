@@ -66,6 +66,7 @@ function summary(id: string, overrides: Partial<SessionSummary> = {}): SessionSu
     displayTitle: id,
     running: false,
     blank: false,
+    occupied: false,
     updatedAt: 0,
     ...overrides,
     retainedBy: overrides.retainedBy ?? {},
@@ -847,6 +848,104 @@ describe('UiWorkspaceService', () => {
       [{ workspaceId: wid('a'), sessionId: sid('held') }],
       [{ workspaceId: wid('a') }],
     ])
+  })
+
+  it('reuses a truly-blank member over an occupied one', async () => {
+    const b = bench({
+      sessions: sessionState([
+        summary('occupied', { blank: true, occupied: true, cwd: '/w/a' }),
+        summary('free', { blank: true, cwd: '/w/a' }),
+      ]),
+      workspaces: workspaceState([workspace('a', [sid('occupied'), sid('free')])]),
+    })
+    await expect(b.uiWorkspace.connectWorkspace(wid('a'))).resolves.toBe(sid('free'))
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('a'), sessionId: sid('free') })
+  })
+
+  it('creates a fresh Session when the Workspace only holds an occupied blank', async () => {
+    const b = bench({
+      sessions: sessionState([summary('occupied', { blank: true, occupied: true, cwd: '/w/a' })]),
+      workspaces: workspaceState([workspace('a', [sid('occupied')])]),
+    })
+    await expect(b.uiWorkspace.connectWorkspace(wid('a'))).resolves.toBe(sid('created-a'))
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('a') })
+  })
+
+  it('falls past a stale candidate the Host refuses as occupied', async () => {
+    const b = bench({
+      sessions: sessionState([
+        summary('stale', { blank: true, cwd: '/w/a' }),
+        summary('free', { blank: true, cwd: '/w/a' }),
+      ]),
+      workspaces: workspaceState([workspace('a', [sid('stale'), sid('free')])]),
+      configureSessions: (sessions) => {
+        sessions.create.mockRejectedValueOnce(new SessionCreateError(
+          new RemoteError('session/occupied', 'occupied', { sessionId: sid('stale') }), sid('stale'),
+        ))
+      },
+    })
+    await expect(b.uiWorkspace.connectWorkspace(wid('a'))).resolves.toBe(sid('free'))
+    expect(b.sessions.create.mock.calls).toEqual([
+      [{ workspaceId: wid('a'), sessionId: sid('stale') }],
+      [{ workspaceId: wid('a'), sessionId: sid('free') }],
+    ])
+  })
+
+  it('creates fresh after an occupied refusal exhausts the stale candidates', async () => {
+    const b = bench({
+      sessions: sessionState([summary('stale', { blank: true, cwd: '/w/a' })]),
+      workspaces: workspaceState([workspace('a', [sid('stale')])]),
+      configureSessions: (sessions) => {
+        sessions.create.mockRejectedValueOnce(new SessionCreateError(
+          new RemoteError('session/occupied', 'occupied', { sessionId: sid('stale') }), sid('stale'),
+        ))
+      },
+    })
+    await expect(b.uiWorkspace.connectWorkspace(wid('a'))).resolves.toBe(sid('created-a'))
+    expect(b.sessions.create.mock.calls).toEqual([
+      [{ workspaceId: wid('a'), sessionId: sid('stale') }],
+      [{ workspaceId: wid('a') }],
+    ])
+  })
+
+  it('opens an occupied saved Workspace member directly instead of reclaiming it', () => {
+    persistSelection({ sessionId: sid('saved') })
+    const b = bench({
+      sessions: sessionState([summary('saved', { blank: true, occupied: true, cwd: '/w/a' })]),
+      workspaces: workspaceState([workspace('a', [sid('saved')])]),
+    })
+    expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('saved'), { source: 'mainView' })
+    expect(b.sessions.create).not.toHaveBeenCalled()
+  })
+
+  it('opens an occupied saved ungrouped Session directly instead of reclaiming it', () => {
+    persistSelection({ sessionId: sid('saved') })
+    const b = bench({
+      sessions: sessionState([summary('saved', { blank: true, occupied: true })]),
+      workspaces: workspaceState(),
+    })
+    expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('saved'), { source: 'mainView' })
+    expect(b.sessions.create).not.toHaveBeenCalled()
+  })
+
+  it('opens the saved blank as history when the Host refuses its reclamation as occupied', async () => {
+    persistSelection({ sessionId: sid('saved') })
+    const b = bench({
+      sessions: sessionState([
+        summary('other', { blank: true, cwd: '/w/a' }),
+        summary('saved', { blank: true, cwd: '/w/a' }),
+      ]),
+      workspaces: workspaceState([workspace('a', [sid('other'), sid('saved')])]),
+      configureSessions: (sessions) => {
+        sessions.create.mockRejectedValueOnce(new SessionCreateError(
+          new RemoteError('session/occupied', 'occupied', { sessionId: sid('saved') }), sid('saved'),
+        ))
+      },
+    })
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('a'), sessionId: sid('saved') })
+    await vi.waitFor(() => {
+      expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(sid('saved'), { source: 'mainView' })
+    })
   })
 
   it.each(['workspace', 'panel'])('does not let saved blank restoration replace a later %s navigation', async (target) => {

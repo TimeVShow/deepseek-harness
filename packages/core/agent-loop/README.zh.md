@@ -108,7 +108,7 @@ const handle = await ctx.agents.create({
 
 ### 创建与拆除
 
-创建是同一个受回滚保护的事务：构造私有会话、具象 agent 与带作用域上下文；等待可选 setup；进入两个注册表；宣告 `session/created`；等待串行 `agent/created` 监听器；随后释放已排队输入。创建运行时子 Agent 的调用方设置 `options.parentAgent`；调用方 Context 则单独拥有事务和存活句柄。Setup、commit、监听器失败或所有者 dispose 都会回滚已准备的资源。已送达的宣告仍可被观察，并有配对的销毁通知。Teardown 停止并排空驱动器、撤销作用域、关闭会话写路径、detach agent，再 detach 会话。每次 detach 都绑定到确切进入的对象，因此陈旧 disposer 无法移除之后出现的同 id 替代项。
+创建是同一个受回滚保护的事务：构造私有会话、具象 agent 与带作用域上下文；等待可选 setup；进入两个注册表；宣告 `session/created`；等待串行 `agent/created` 监听器；随后释放已排队输入。创建运行时子 Agent 的调用方设置 `options.parentAgent`；调用方 Context 则单独拥有事务和存活句柄。Setup、commit、监听器失败或所有者 dispose 都会回滚已准备的资源。已送达的宣告仍可被观察，并有配对的销毁通知。Teardown 停止并排空驱动器、撤销作用域、关闭会话写路径、detach agent，再 detach 会话。从第一条语句起 teardown 即拥有取消权与投递权：teardown 运行期间，`Agent.cancel()` 携带 `disposed` 以外 cause 时是冗余 no-op，全部公开投递入口（`send`/`followup`/`steer`/`inject` 与 Inbox 变更）都会拒绝；teardown 自身的 disposed-cause 取消会从 inbox 保有的状态中持久丢弃待处理输入，即使工厂的投影释放已经先行执行。只有 machine 自身的工具结果上下文保留内部停放通道（[销毁期取消归属](../../../.agents/notes/implemented/architecture/2026-11-06-disposal-owns-machine-cancellation.zh.md)）。每次 detach 都绑定到确切进入的对象，因此陈旧 disposer 无法移除之后出现的同 id 替代项。
 
 ### 持久化集成
 

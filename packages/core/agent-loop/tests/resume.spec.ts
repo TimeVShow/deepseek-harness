@@ -9,14 +9,14 @@ import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionLogOffset, SessionSeq, Session, SessionId, TOOL_OUTCOME_UNKNOWN } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionHandle } from '@deepseek-ai/dsh-session-persistence'
 
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import { MockAdapter, textResponse } from './mock-adapter.ts'
+import { MockAdapter, textResponse, toolCallResponse } from './mock-adapter.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -27,13 +27,19 @@ declare module '@deepseek-ai/dsh-llm' {
 const dirs: string[] = []
 afterEach(async () => { for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true }) })
 
-async function persistentHarness(adapter: MockAdapter): Promise<{ ctx: Context; root: string }> {
+async function persistentHarness(adapter: MockAdapter): Promise<{ ctx: Context; root: string; unloadLoop: () => Promise<void> }> {
   const root = await mkdtemp(join(tmpdir(), 'dsh-resume-'))
   dirs.push(root)
-  return { ctx: await mountPersistentHarness(root, adapter), root }
+  const mounted = await mountHarness(root, adapter)
+  return { ctx: mounted.ctx, root, unloadLoop: mounted.unloadLoop }
 }
 
 async function mountPersistentHarness(root: string, adapter: MockAdapter, compression?: 'none'): Promise<Context> {
+  return (await mountHarness(root, adapter, compression)).ctx
+}
+
+/** Mount the persistent composition; exposes the AgentLoop plugin handle for mid-lifecycle unload tests. */
+async function mountHarness(root: string, adapter: MockAdapter, compression?: 'none'): Promise<{ ctx: Context; unloadLoop: () => Promise<void> }> {
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
@@ -44,9 +50,9 @@ async function mountPersistentHarness(root: string, adapter: MockAdapter, compre
   // The backend mounts BEFORE the loop so root teardown unwinds the loop
   // first: live agents drain their writers into still-open handles.
   await ctx.plugin(JsonlSessionPersistence, { root, ...compression === undefined ? {} : { compression } })
-  await ctx.plugin(AgentLoop, { agents: [] })
+  const loop = await ctx.plugin(AgentLoop, { agents: [] })
   ctx.llm.registerAdapter(['mock'], adapter)
-  return ctx
+  return { ctx, unloadLoop: () => loop.dispose() }
 }
 
 /** Remove every `session.lock` under the root: the POSIX forfeit-by-unlink escape hatch, without importing backend internals. */
@@ -974,6 +980,137 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     expect(flat).toContain('background job 42 finished')
     await ctx2.fiber.dispose()
     await ctx1.fiber.dispose()
+  })
+
+  // Graceful shutdown owns a durable discard of pending input on every
+  // ownership path. The machine retains the inbox state it committed, so the
+  // clear still lands after fiber unload has released the factory's inbox
+  // projection registration — a resumed Session must not replay input the
+  // agent never ran.
+  it.each(['handle', 'factory', 'during-publication'] as const)(
+    'graceful %s disposal durably discards pending input for a resumed Session',
+    async (mode) => {
+      const id = SessionId(`dispose-pending-${mode}`)
+      const marker = 'pending-before-graceful-unload'
+      const route = { provider: 'mock', model: 'mock' }
+      const old = createUserMessage({ content: [{ type: 'text', text: marker }], source: { kind: 'user' } })
+      const first = await persistentHarness(new MockAdapter([]))
+      try {
+        if (mode === 'during-publication') {
+          const entered = Promise.withResolvers<Agent>()
+          const release: PromiseWithResolvers<void> = Promise.withResolvers()
+          first.ctx.on('agent/created', async ({ agent }) => {
+            agent.inject(old)
+            entered.resolve(agent)
+            await release.promise
+          })
+          const creating = first.ctx.agents.create({ sessionId: id, agentOptions: route })
+          const agent = await entered.promise
+          const unloading = first.unloadLoop()
+          try {
+            // Hold publication until unload has released the projection
+            // registration, so the teardown's clear cannot read it.
+            await vi.waitFor(() => {
+              expect(first.ctx.sessionProjections.stateOf(agent.session, 'inbox')).toBeUndefined()
+            })
+          } finally {
+            release.resolve()
+          }
+          // Creation rolls back because the factory unload won the publication
+          // race; the injected input and its disposal discard stay durable.
+          await creating.catch(() => undefined)
+          await unloading
+        } else {
+          const handle = await first.ctx.agents.create({ sessionId: id, agentOptions: route })
+          handle.agent.inject(old)
+          if (mode === 'handle') await handle.dispose()
+          else await first.unloadLoop()
+        }
+      } finally {
+        await first.ctx.fiber.dispose()
+      }
+
+      const adapter = new MockAdapter([textResponse('ok')])
+      const second = await mountPersistentHarness(first.root, adapter)
+      try {
+        const stored = await readStoredEvents(second, id)
+        expect(stored.some(event => event.type === 'agent/inbox/spliced' && event.data.outcome === 'canceled')).toBe(true)
+        const { agent } = await second.agents.resume({ resumeSessionId: id, agentOptions: route })
+        expect(agent.inbox.nextStep.some(message => message.id === old.id)).toBe(false)
+        agent.followup(createUserMessage({ content: [{ type: 'text', text: 'fresh-input' }], source: { kind: 'user' } }))
+        await agent.whenIdle()
+        expect(adapter.requests).toHaveLength(1)
+        const request = JSON.stringify(adapter.requests[0]!.messages)
+        expect(request).toContain('fresh-input')
+        expect(request).not.toContain(marker)
+      } finally {
+        await second.fiber.dispose()
+      }
+    },
+  )
+
+  // Disposal owns the inbox from its first statement. Input that arrives while
+  // a tool still drains is refused, so it never reaches the durable log and a
+  // resumed Session cannot replay it beside the user's next message.
+  it('shutdown refuses late input while draining a tool, and the resumed Session does not replay it', async () => {
+    const id = SessionId('dispose-late-inject')
+    const route = { provider: 'mock', model: 'mock' }
+    const marker = 'late-input-while-draining'
+    const late = createUserMessage({ content: [{ type: 'text', text: marker }], source: { kind: 'user' } })
+    const first = await persistentHarness(new MockAdapter([toolCallResponse('gate-call', 'gated', {})]))
+    const entered: PromiseWithResolvers<void> = Promise.withResolvers()
+    const releaseTool: PromiseWithResolvers<void> = Promise.withResolvers()
+    try {
+      const handle = await first.ctx.agents.create({ sessionId: id, agentOptions: route })
+      handle.agent.ctx.tools.register(defineContentToolFixture({
+        name: 'gated',
+        description: 'waits until the test releases it',
+        parameters: {},
+        execute: async () => {
+          entered.resolve()
+          await releaseTool.promise
+          return [{ type: 'text', text: 'ran' }]
+        },
+      }))
+      handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'start-tool' }], source: { kind: 'user' } }))
+      await entered.promise
+      let rejected = false
+      const unloading = first.unloadLoop()
+      try {
+        await vi.waitFor(() => {
+          expect(first.ctx.sessionProjections.stateOf(handle.agent.session, 'inbox')).toBeUndefined()
+        }, { interval: 1 })
+        try {
+          handle.agent.inject(late)
+        } catch {
+          rejected = true
+        }
+      } finally {
+        releaseTool.resolve()
+        await unloading
+      }
+      expect(rejected).toBe(true)
+    } finally {
+      await first.ctx.fiber.dispose()
+    }
+
+    const adapter = new MockAdapter([textResponse('ok')])
+    const second = await mountPersistentHarness(first.root, adapter)
+    try {
+      const stored = await readStoredEvents(second, id)
+      expect(stored.some(event => event.type === 'agent/inbox/spliced'
+        && event.data.inserted.some(message => message.id === late.id))).toBe(false)
+      const { agent } = await second.agents.resume({ resumeSessionId: id, agentOptions: route })
+      expect(agent.inbox.nextStep.some(message => message.id === late.id)).toBe(false)
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: 'fresh-input' }], source: { kind: 'user' } }))
+      await agent.whenIdle()
+      expect(adapter.requests).toHaveLength(1)
+      const request = JSON.stringify(adapter.requests[0]!.messages)
+      expect(request).toContain('fresh-input')
+      expect(request).not.toContain(marker)
+    } finally {
+      await second.fiber.dispose()
+    }
   })
 
   it('resume reloads a persisted session: history + turn numbering continue, no duplicate seqs', async () => {

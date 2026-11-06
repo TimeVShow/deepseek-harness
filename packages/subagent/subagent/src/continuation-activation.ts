@@ -16,6 +16,7 @@ import type {
   AgentOptions,
   CreateAgentOptions,
 } from '@deepseek-ai/dsh-agent'
+import { AgentDeliveryClosedError } from '@deepseek-ai/dsh-agent'
 import { errorChain } from '@deepseek-ai/dsh-llm'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
 import type {
@@ -880,6 +881,9 @@ export class ContinuableActivationRegistry {
       }
       this.sendWaking(parent, message, parent.status === 'idle' ? 'queue' : 'steer')
     } catch (error: unknown) {
+      // A parent whose machine began disposal closes delivery by contract; the
+      // notice is best-effort at that boundary and drops with the teardown.
+      if (error instanceof AgentDeliveryClosedError) return
       this.ctx.logger.warn(
         `subagent "${activation.childId}" settlement notice was not delivered to its parent: `
         + errorChain(error),

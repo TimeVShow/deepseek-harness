@@ -61,6 +61,7 @@ export class SubmitMachine {
             name: c.name,
             token: c.token,
             ...(c.hint !== undefined ? { hint: c.hint } : {}),
+            ...(c.warning !== undefined ? { warning: c.warning } : {}),
             ...(c.attachments === true ? { attachments: true } : {}),
           },
         }

@@ -44,9 +44,9 @@ function mainSessionId(list: SessionListState): SessionId | undefined {
 /** One top-level session row in a group or the flat list. */
 export interface SessionNode {
   id: SessionId
-  /** Stored display title; the renderer substitutes the localized New Session label for blank rows. */
+  /** Stored display title; the renderer substitutes the localized New Session label for placeholder rows. */
   title: string
-  /** The provisional blank session (renderer shows the localized New Session title). */
+  /** The provisional New Session placeholder; an occupied blank Session is never one. */
   blank: boolean
   /** A Session-scoped UI consumer is awaiting this user. */
   pendingInteraction?: SessionPendingInteractionStatus
@@ -235,8 +235,18 @@ export function pinCurrentBlank(
 export type ArchivedFilter = 'default' | 'show' | 'only'
 
 /**
- * Ordinary sessions are visible; among blank sessions, only the current one
- * is visible. Subagent children use their parent header catalog; archived
+ * A blank Session is the selected Workspace's provisional New Session row only
+ * while nothing occupies it. A Session that durably owns non-conversation work
+ * has no chat turns yet but is ordinary history: it stays visible, keeps its
+ * display title, and is never presented or reclaimed as a blank placeholder.
+ */
+function isPlaceholderBlank(session: SessionSummary): boolean {
+  return session.blank && !session.occupied
+}
+
+/**
+ * Ordinary sessions are visible; among placeholder blanks, only the current
+ * one is visible. Subagent children use their parent header catalog; archived
  * sessions follow the archived filter, while their accounting slots remain
  * either way so unarchiving restores position.
  */
@@ -247,7 +257,7 @@ function sessionVisible(
   archivedFilter: ArchivedFilter,
 ): boolean {
   if (session.origin === 'subagent') return false
-  if (session.blank && session.id !== current) return false
+  if (isPlaceholderBlank(session) && session.id !== current) return false
   switch (archivedFilter) {
     case 'default':
       return !archived.has(session.id)
@@ -284,7 +294,7 @@ function sectionMembers(
   const leading: SessionSummary[] = []
   const rest: SessionSummary[] = []
   for (const member of members) {
-    if (member.blank) placeholders.push(member)
+    if (isPlaceholderBlank(member)) placeholders.push(member)
     else if (!archived.has(member.id) && pinned.has(member.id)) leading.push(member)
     else rest.push(member)
   }
@@ -292,12 +302,12 @@ function sectionMembers(
 }
 
 /**
- * A blank session is the selected Workspace's provisional New Session row;
- * its canonical title never enters search (blank rows are query-excluded)
- * and the renderer localizes its display label.
+ * A placeholder blank carries the localized New Session label instead of its
+ * canonical title; an occupied Session keeps its display title, whose fallback
+ * chain ends at the Session id, so it stays recognizable in history.
  */
 function sessionTitle(session: SessionSummary): string {
-  return session.blank ? '' : session.displayTitle
+  return isPlaceholderBlank(session) ? '' : session.displayTitle
 }
 
 /** The list projection alone owns the best-effort active-Schedule indicator. */
@@ -412,7 +422,7 @@ function sessionNode(
   return {
     id: s.id,
     title: sessionTitle(s),
-    blank: s.blank,
+    blank: isPlaceholderBlank(s),
     running: status?.running ?? s.running,
     runningSubagentCount: runningChildCount(list, s.id, statuses),
     completed: status?.completionUnread === true,
@@ -428,10 +438,11 @@ function sessionNode(
  * Derive the workspace browser groups with every session as a top-level row.
  *
  * Every group shows; sessions populate under expanded groups with pinned rows
- * leading in the selected local order. Blank sessions are
- * excluded except for the selected provisional New Session row; archived
- * sessions keep their slots and appear per the archived filter. Content
- * search lives outside this derivation (see {@link deriveSearchResults}).
+ * leading in the selected local order. Placeholder blanks are excluded except
+ * for the selected provisional New Session row; occupied blank Sessions are
+ * ordinary history; archived sessions keep their slots and appear per the
+ * archived filter. Content search lives outside this derivation (see
+ * {@link deriveSearchResults}).
  * @param list - sessions list snapshot (`mainView` retention feeds containsCurrent).
  * @param workspaces - real Workspaces in Host group order with caller-projected Session order.
  * @param rowState - registry-global pin and archive sets plus the archived filter.
@@ -477,7 +488,7 @@ export function deriveGroups(
 /**
  * Select complete flat-list membership, independently of archive visibility.
  * @param list - sessions list snapshot.
- * @returns known ordinary Session ids, including archives and only the current blank.
+ * @returns known ordinary Session ids, including archives, occupied blanks, and only the current placeholder blank.
  */
 export function sessionMemberIds(list: SessionListState): SessionId[] {
   return visibleSessionIds(list, [], 'show')
@@ -488,7 +499,7 @@ export function sessionMemberIds(list: SessionListState): SessionId[] {
  * @param list - sessions list snapshot.
  * @param archivedSessionIds - registry-global archive set.
  * @param archivedFilter - archived-row visibility choice.
- * @returns known visible Session ids in list order, including ordinary forks and only the current blank.
+ * @returns known visible Session ids in list order, including ordinary forks, occupied blanks, and only the current placeholder blank.
  */
 export function visibleSessionIds(
   list: SessionListState,
@@ -576,9 +587,10 @@ export function deriveSearchResults(
   const local: SessionSummary[] = []
   for (const id of list.ids) {
     const summary = list.byId[id]
-    // Blank placeholders never match a query (their canonical title displays
-    // localized, so matching it would tie search to one language).
-    if (summary === undefined || summary.blank || !sessionVisible(summary, current, archived, archivedFilter)) continue
+    // Placeholder blanks never match a query (their canonical title displays
+    // localized, so matching it would tie search to one language). An occupied
+    // Session is ordinary history and matches through its display title.
+    if (summary === undefined || isPlaceholderBlank(summary) || !sessionVisible(summary, current, archived, archivedFilter)) continue
     if (
       sessionTitle(summary).toLowerCase().includes(q)
       || labelOf(summary).toLowerCase().includes(q)
@@ -600,7 +612,8 @@ export function deriveSearchResults(
   for (const summary of orderedLocal) include(summary)
   for (const item of content.items) {
     const summary = list.byId[item.sessionId]
-    if (summary !== undefined && !summary.blank && sessionVisible(summary, current, archived, archivedFilter)) include(summary)
+    if (summary !== undefined && !isPlaceholderBlank(summary)
+      && sessionVisible(summary, current, archived, archivedFilter)) include(summary)
   }
 
   return {

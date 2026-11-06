@@ -1,5 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
+import { AgentDeliveryClosedError } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, freezeMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
@@ -69,9 +70,8 @@ async function reconstructPersistedInbox(
   await ctx.plugin(SessionProjectionRegistry)
   ctx.sessionProjections.register(inboxProjectionDefinition)
   const agent = stubAgent(rawId, { ctx, session })
-  const inbox = new ReactLoopInbox(ctx.sessionProjections, session, agentEvents(ctx, agent))
   try {
-    void inbox.nextTurn
+    new ReactLoopInbox(ctx.sessionProjections, session, agentEvents(ctx, agent))
   } catch (error: unknown) {
     if (error instanceof Error) return error
     throw error
@@ -80,7 +80,7 @@ async function reconstructPersistedInbox(
 }
 
 describe('ReactLoopInbox', () => {
-  it('reads the shared projection without owning its registration', async () => {
+  it('retains its committed state after the shared projection registration releases', async () => {
     const ctx = new Context()
     onTestFinished(() => ctx.fiber.dispose())
     await ctx.plugin(SessionStore)
@@ -108,7 +108,16 @@ describe('ReactLoopInbox', () => {
 
     unregister()
     expect(ctx.sessionProjections.stateOf(session, 'inbox')).toBeUndefined()
-    expect(() => first.nextTurn).toThrow('its projection registration is not active')
+    // Fiber unload releases the factory's registration while teardown still
+    // runs: reads keep serving the state this inbox committed, and the
+    // disposal clear still lands durably for a resumed Session.
+    expect(first.nextTurn).toEqual([pending])
+    expect(second.nextTurn).toEqual([pending])
+    first.clear()
+    expect(first.nextTurn).toEqual([])
+    // A fresh inbox has nothing to seed from and still refuses the release.
+    expect(() => new ReactLoopInbox(ctx.sessionProjections, session, dispatch))
+      .toThrow('its projection registration is not active')
   })
 
   it('rejects invalid durable coordinates and duplicate identities during reconstruction', async () => {
@@ -134,6 +143,52 @@ describe('ReactLoopInbox', () => {
     })
     expect(duplicate.message).toBe('invalid persisted inbox splice at session seq 1')
     expect((duplicate.cause as Error).message).toBe(`message "${pending.id}" is already pending`)
+  })
+
+  it('closes public mutation when disposal takes the inbox and still clears for teardown', async () => {
+    const { inbox } = await inboxAgent('inbox-disposal')
+    const pending = createUserMessage({
+      content: [{ type: 'text', text: 'pending' }],
+      source: { kind: 'user' },
+    })
+    inbox.append('next-step', pending)
+    inbox.beginDisposal()
+    const late = createUserMessage({
+      content: [{ type: 'text', text: 'late' }],
+      source: { kind: 'user' },
+    })
+    expect(() => { inbox.append('next-step', late) }).toThrow(AgentDeliveryClosedError)
+    expect(() => { inbox.prepend('next-turn', late) }).toThrow('disposal has begun')
+    expect(() => { inbox.replace(pending.id, late) }).toThrow('disposal has begun')
+    expect(() => { inbox.remove(pending.id) }).toThrow('disposal has begun')
+    expect(() => { inbox.splice('next-step', 0, 0, [late]) }).toThrow('disposal has begun')
+    expect(() => { inbox.clear() }).toThrow(AgentDeliveryClosedError)
+    // Reads stay available to lifecycle observers, and the disposal-owned
+    // clear still lands durably for a resumed Session.
+    expect(inbox.nextStep).toHaveLength(1)
+    inbox.disposeClear()
+    expect(inbox.nextStep).toEqual([])
+    expect(inbox.nextTurn).toEqual([])
+  })
+
+  it('an observer of the committed splice reads the new queue through both entry points', async () => {
+    const { ctx, session, inbox } = await inboxAgent('inbox-observer-order')
+    const marker = createUserMessage({
+      content: [{ type: 'text', text: 'observed inline' }],
+      source: { kind: 'user' },
+    })
+    let observed: { inAgent: boolean; inProjection: boolean } | undefined
+    ctx.on('session/event', (subject, event) => {
+      if (subject !== session || event.type !== 'agent/inbox/spliced') return
+      if (!event.data.inserted.some(message => message.id === marker.id)) return
+      observed = {
+        inAgent: inbox.nextStep.some(message => message.id === marker.id),
+        inProjection: ctx.sessionProjections.stateOf(session, 'inbox')?.['next-step']
+          .some(message => message.id === marker.id) ?? false,
+      }
+    })
+    inbox.append('next-step', marker)
+    expect(observed).toEqual({ inAgent: true, inProjection: true })
   })
 
   it('projects inherited inbox events in a forked session', async () => {

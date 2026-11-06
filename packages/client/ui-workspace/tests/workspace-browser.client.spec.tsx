@@ -37,7 +37,7 @@ const t: WorkspaceBrowserProps['t'] = makeTranslate(zh, commonZh)
 const sid = (id: string) => id as SessionId
 const wid = (id: string) => id as WorkspaceId
 const summary = (id: string, updatedAt: number, overrides: Partial<SessionSummary> = {}): SessionSummary => ({
-  id: sid(id), displayTitle: id, running: false, blank: false, updatedAt, ...overrides,
+  id: sid(id), displayTitle: id, running: false, blank: false, occupied: false, updatedAt, ...overrides,
   retainedBy: overrides.retainedBy ?? {},
 })
 const sessionState = (
@@ -241,6 +241,24 @@ describe('WorkspaceBrowser', () => {
       expect.stringContaining('tie-a'), expect.stringContaining('tie-b'), expect.stringContaining('blank'),
     ])
     expect(b.store.getSnapshot().orderBy).toBe('updated')
+  })
+
+  it('sorts a selected occupied blank as history instead of pinning it as the New Session slot', () => {
+    const preferences = createWorkspaceViewStore().create()
+    preferences.actions.setGroupBy('workspace')
+    preferences.actions.setGroupExpanded('alpha', true)
+    mount({
+      useSessions: hook(sessionState([
+        summary('tie-b', 100),
+        summary('parent', 1, { blank: true, occupied: true }),
+        summary('tie-a', 100),
+      ], { main: sid('parent') })),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['tie-b', 'parent', 'tie-a'])])),
+    })
+    const rows = () => screen.getAllByRole('treeitem').filter(row => row.getAttribute('aria-expanded') === null)
+    expect(rows().map(row => row.textContent)).toEqual([
+      expect.stringContaining('tie-a'), expect.stringContaining('tie-b'), expect.stringContaining('parent'),
+    ])
   })
 
   it('moves focus into Workspace controls without selecting a Session while a main panel is active', () => {

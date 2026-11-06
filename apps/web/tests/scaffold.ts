@@ -322,6 +322,13 @@ export interface LaunchOptions {
    */
   extraInstallAnchors?: string[]
   /**
+   * Who owns the shipping provider routes. The default scaffold registers a
+   * call-failing route-only adapter when no replay fixture exists; pass
+   * `composition` when an overlay row registers a real adapter for those
+   * routes, so the fallback does not duplicate it.
+   */
+  providerRoutes?: 'scaffold' | 'composition'
+  /**
    * Manage the scaffold profile the way the launcher does: a `profileContext`
    * over the profile directory, whose manifest lists the shipped web bundles
    * and each package directory here as an installed dependency (`file:` in the
@@ -867,7 +874,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
         ...(replayChildFixtures === undefined ? {} : { childFiles: replayChildFixtures }),
         ...(options.paceMs === undefined ? {} : { paceMs: options.paceMs }),
       })
-    } else if (mode !== 'record' && options.deepSeekMissingCredential !== true) {
+    } else if (mode !== 'record' && options.deepSeekMissingCredential !== true && options.providerRoutes !== 'composition') {
       // No fixture and no shipped adapter would leave the tree with ZERO
       // provider routes — a state no product composition has, and one the
       // composer refuses to type into. Register the same routes
@@ -1723,10 +1730,11 @@ export function watchConsole(page: Page): WebConsoleTripwire {
 }
 
 /**
- * Remove only connection-loss warnings emitted after an intentional reload.
- * Earlier warnings and all gap-repair/discontinuity warnings remain fatal.
+ * Remove only connection-loss warnings emitted after an intentional reload or
+ * connection cut. Earlier warnings and all gap-repair/discontinuity warnings
+ * remain fatal.
  * @param tripwire - the live console-warning collector.
- * @param warningStart - warning count captured immediately before reloading.
+ * @param warningStart - warning count captured immediately before the interruption.
  */
 export function acknowledgeReloadConnectionLoss(
   tripwire: WebConsoleTripwire,

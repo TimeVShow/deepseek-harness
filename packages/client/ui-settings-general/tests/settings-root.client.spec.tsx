@@ -83,6 +83,7 @@ function mount({
         id: activeId,
         displayTitle: 'Active',
         blank: onboardingActive,
+        occupied: false,
         running: false,
         retainedBy: mainView ? { mainView: 1 } : {},
         updatedAt: 0,

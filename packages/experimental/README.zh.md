@@ -29,8 +29,12 @@ kind: "package-group"
 | [`api-speech-to-text`](api-speech-to-text/README.zh.md) | 带认证的临时转写 Remote | `ctx.speechController` |
 | [`client-ui-voice-input`](client-ui-voice-input/README.zh.md) | 麦克风录音与版本检查后的草稿插入 | — |
 | [`voice-input-bundle`](voice-input-bundle/README.zh.md) | 默认禁用的可选语音输入组合 | — |
+| [`agent-flow-profile`](agent-flow-profile/README.zh.md) | 固定多 Agent 工作流：文档、图运行时与 Web 画布组合包 | — |
 | [`agent-team-profile`](agent-team-profile/README.zh.md) | Agent Teams 协作、工具与 Web UI 组合包 | — |
 | [`agent-team`](agent-team/README.zh.md) | 具名 teammate，成员之间持久消息与共享任务板 | `ctx.agentTeams` |
+| [`agent-flow`](agent-flow/README.zh.md) | agent 模板、经校验的流程图文档与持久运行记录 | `ctx.agentFlows` |
+| [`agent-flow-runtime`](agent-flow-runtime/README.zh.md) | 通过 subagent provider 运行流程文档的图解释器 | — |
+| [`client-ui-agent-flow`](client-ui-agent-flow/README.zh.md) | Web 流程画布、agent 模板表单与运行控制 | — |
 | [`client-ui-agent-team`](client-ui-agent-team/README.zh.md) | Web Team roster、任务板与 teammate 导航 | — |
 | [`auto-review`](auto-review/README.zh.md) | 显式 Web 层，在每个原生或 PTC inner 工具调用前使用同一模型审查 | — |
 | [`ptc-runtime-python`](ptc-runtime-python/README.zh.md) | PTC 执行 seam 的 CPython 子进程后端 | `ctx.ptcRuntime` |
@@ -54,6 +58,7 @@ kind: "package-group"
 - [计算机操作](../../docs/subsystems/computer-use.zh.md)——桌面提供方选择。
 - [浏览器操作](../../docs/subsystems/browser-use.zh.md)——浏览器提供方选择与 Session 所有权。
 - [Agent Teams 子系统](../../docs/subsystems/agent-team.zh.md)——持久 Team 类型与 `ctx.agentTeams` 服务 API。
+- [Agent Flow 子系统](../../docs/subsystems/agent-flow.zh.md)——持久 flow 类型与 `ctx.agentFlows` 服务 API。
 - [实验子树规则](AGENTS.md)——实验状态放宽了什么、不放宽什么。
 
 -----

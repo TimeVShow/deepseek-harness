@@ -58,7 +58,18 @@ describe('Connection binary RPC', () => {
         req.once('error', reject)
         req.end(init.body as string)
       }))
-      expect(await rpc.call('/api', 'fixture/read', {})).toEqual({ ok: true, value: { data, bytes: data.length } })
+      const result = await rpc.call('/api', 'fixture/read', {})
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error('fixture/read failed')
+      /* The interceptor's contract fixes this shape; naming it avoids a megabyte
+         of deep equality, which dominated this spec's runtime. */
+      const value = result.value as { bytes: number; data: unknown }
+      expect(Object.keys(value).sort()).toEqual(['bytes', 'data'])
+      expect(value.bytes).toBe(data.length)
+      const received = value.data
+      if (!(received instanceof Uint8Array)) throw new Error('the attachment did not arrive as bytes')
+      expect(received.length).toBe(data.length)
+      expect(Buffer.compare(Buffer.from(received), Buffer.from(data))).toBe(0)
       if (compression === 'gzip') {
         expect(encoding).toBe('gzip')
         expect(transferred).toBeLessThan(data.length / 10)

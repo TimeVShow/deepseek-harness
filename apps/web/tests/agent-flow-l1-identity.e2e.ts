@@ -1,0 +1,805 @@
+/**
+ * L1 Agent Flow acceptance: identity matrix over the shipped Web composition.
+ * Real Host, Remote, Session, flow scheduler, and agent loop run unchanged;
+ * only the DeepSeek wire is scripted (fixtures/scripted-llm.js), so runs start
+ * from the real composer flow picker, and the assertions read durable run
+ * records, Session identity, workspace membership, and node handoffs.
+ */
+
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { chromium, type Browser, type Page } from 'playwright'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import type { FlowId, FlowRun } from '@deepseek-ai/dsh-experimental-agent-flow'
+import type {} from '@deepseek-ai/dsh-experimental-agent-flow'
+import { launchWebScaffold, acknowledgeReloadConnectionLoss, watchConsole, type WebScaffold } from './scaffold.ts'
+import { newEnglishPage } from './support.ts'
+
+declare global {
+  interface Window {
+    /** Stages the E17 activity check recorded from the progress card's DOM. */
+    __flowStages?: string[]
+  }
+}
+
+const OVERLAY = fileURLToPath(new URL('./fixtures/agent-flow-scripted.overlay.yml', import.meta.url))
+const INSTALL_ANCHORS = [
+  fileURLToPath(new URL('../../../packages/experimental/agent-flow-profile/package.json', import.meta.url)),
+]
+
+describe('web e2e: agent-flow L1 identity', () => {
+  let scaffold: WebScaffold
+  let browser: Browser
+  let attachSession: (id: SessionId) => Promise<void>
+  let primaryWorkspace: string
+  let flowA: FlowId
+  let flowB: FlowId
+  let flowC: FlowId
+  let flowD: FlowId
+  const pages: Page[] = []
+  let tripwires: ReturnType<typeof watchConsole>[] = []
+  const hostFailures: unknown[] = []
+  const onHostFailure = (reason: unknown): void => {
+    hostFailures.push(reason)
+    console.error('HOST-UNHANDLED', reason instanceof Error ? reason.stack ?? reason.message : String(reason))
+  }
+
+  beforeAll(async () => {
+    // Unhandled rejections cover async faults; a synchronous throw inside an
+    // event listener (an abort dispatch, for example) surfaces as an uncaught
+    // exception instead, so both channels must fail the tests.
+    process.on('unhandledRejection', onHostFailure)
+    process.on('uncaughtException', onHostFailure)
+    scaffold = await launchWebScaffold({
+      extraOverlayPath: OVERLAY,
+      extraInstallAnchors: INSTALL_ANCHORS,
+      providerRoutes: 'composition',
+    })
+    const workspace = await scaffold.ctx.workspaceRegistry.create(scaffold.workspaceCwd)
+    primaryWorkspace = String(workspace.id)
+    attachSession = async (id) => { await workspace.attachSession(id) }
+    const template = async (name: string, role: string, model: string) =>
+      await scaffold.ctx.agentFlows.saveTemplate({
+        name,
+        persona: `ROLE:${role} Act as the ${role} of this workflow.`,
+        provider: 'deepseek-official',
+        model,
+      })
+    const writer = await template('Brief writer', 'writer', 'deepseek-v4-pro')
+    const checker = await template('Brief checker', 'checker', 'deepseek-flash')
+    const design = await template('Designer', 'design', 'deepseek-v4-pro')
+    const implement = await template('Implementer', 'implement', 'deepseek-flash')
+    const review = await template('Reviewer', 'review', 'deepseek-v4-pro')
+    const product = await template('Product', 'product', 'deepseek-v4-pro')
+    const engineer = await template('Engineer', 'engineer', 'deepseek-flash')
+    const qa = await template('QA', 'qa', 'deepseek-flash')
+    const summary = await template('Summary', 'summary', 'deepseek-v4-pro')
+    const clarify = await template('Clarifier', 'clarify', 'deepseek-v4-pro')
+
+    const brief = {
+      name: 'Brief flow',
+      nodes: [
+        { kind: 'start' as const, id: 'start' },
+        { kind: 'agent' as const, id: 'writer', templateId: writer.id, instruction: 'Write the brief.' },
+        { kind: 'agent' as const, id: 'checker', templateId: checker.id, instruction: 'Check the brief.' },
+        { kind: 'end' as const, id: 'end' },
+      ],
+      edges: [
+        { kind: 'execution' as const, from: 'start', to: 'writer' },
+        { kind: 'input' as const, from: 'start', to: 'writer' },
+        { kind: 'execution' as const, from: 'writer', to: 'checker' },
+        { kind: 'execution' as const, from: 'checker', to: 'end' },
+      ],
+    }
+    flowA = (await scaffold.ctx.agentFlows.saveFlow(brief)).id
+    flowB = (await scaffold.ctx.agentFlows.saveFlow({
+      name: 'Design flow',
+      nodes: [
+        { kind: 'start', id: 'start' },
+        { kind: 'agent', id: 'design', templateId: design.id, instruction: 'Design the solution.' },
+        { kind: 'agent', id: 'implement', templateId: implement.id, instruction: 'Implement the design.' },
+        { kind: 'agent', id: 'review', templateId: review.id, instruction: 'Review the implementation.' },
+        { kind: 'condition', id: 'verdict' },
+        { kind: 'end', id: 'end' },
+      ],
+      edges: [
+        { kind: 'execution', from: 'start', to: 'design' },
+        { kind: 'input', from: 'start', to: 'design' },
+        { kind: 'execution', from: 'design', to: 'implement' },
+        { kind: 'input', from: 'design', to: 'review' },
+        { kind: 'execution', from: 'implement', to: 'review' },
+        { kind: 'execution', from: 'review', to: 'verdict' },
+        { kind: 'execution', from: 'verdict', to: 'end', result: 'approved' },
+        { kind: 'execution', from: 'verdict', to: 'implement', result: 'rework' },
+      ],
+    })).id
+    flowC = (await scaffold.ctx.agentFlows.saveFlow({
+      name: 'Review flow',
+      nodes: [
+        { kind: 'start', id: 'start' },
+        { kind: 'agent', id: 'product', templateId: product.id, instruction: 'Assess user value.' },
+        { kind: 'agent', id: 'engineer', templateId: engineer.id, instruction: 'Assess the technical plan.' },
+        { kind: 'agent', id: 'qa', templateId: qa.id, instruction: 'Assess risks and acceptance.' },
+        { kind: 'agent', id: 'summary', templateId: summary.id, instruction: 'Summarize consensus and differences.' },
+        { kind: 'end', id: 'end' },
+      ],
+      edges: [
+        { kind: 'execution', from: 'start', to: 'product' },
+        { kind: 'input', from: 'start', to: 'product' },
+        { kind: 'execution', from: 'start', to: 'engineer' },
+        { kind: 'input', from: 'start', to: 'engineer' },
+        { kind: 'execution', from: 'start', to: 'qa' },
+        { kind: 'input', from: 'start', to: 'qa' },
+        { kind: 'execution', from: 'product', to: 'summary' },
+        { kind: 'execution', from: 'engineer', to: 'summary' },
+        { kind: 'execution', from: 'qa', to: 'summary' },
+        { kind: 'execution', from: 'summary', to: 'end' },
+      ],
+    })).id
+    await scaffold.ctx.agentFlows.saveFlow({
+      name: 'Clarify flow',
+      nodes: [
+        { kind: 'start', id: 'start' },
+        { kind: 'agent', id: 'clarify', templateId: clarify.id, instruction: 'Clarify the request with the user.', interactive: true },
+        { kind: 'agent', id: 'after', templateId: writer.id, instruction: 'Do the agreed work.' },
+        { kind: 'end', id: 'end' },
+      ],
+      edges: [
+        { kind: 'execution', from: 'start', to: 'clarify' },
+        { kind: 'input', from: 'start', to: 'clarify' },
+        { kind: 'execution', from: 'clarify', to: 'after' },
+        { kind: 'execution', from: 'after', to: 'end' },
+      ],
+    })
+    flowD = (await scaffold.ctx.agentFlows.saveFlow({
+      name: 'Verify flow',
+      nodes: [
+        { kind: 'start', id: 'start' },
+        { kind: 'agent', id: 'verify', templateId: clarify.id, instruction: 'Verify the details with the user.', interactive: true },
+        { kind: 'agent', id: 'checked', templateId: checker.id, instruction: 'Check the verified details.' },
+        { kind: 'end', id: 'end' },
+      ],
+      edges: [
+        { kind: 'execution', from: 'start', to: 'verify' },
+        { kind: 'input', from: 'start', to: 'verify' },
+        { kind: 'execution', from: 'verify', to: 'checked' },
+        { kind: 'execution', from: 'checked', to: 'end' },
+      ],
+    })).id
+    // The progress card needs a tool execution that lasts long enough to
+    // paint its Running tools stage; a millisecond tool settles between two
+    // client commits and the stage never renders. The scripted provider calls
+    // this tool from the E17 clarification round.
+    scaffold.ctx.tools.register(defineContentToolFixture({
+      name: 'slow_echo',
+      description: 'Echo the text after a short delay (acceptance-lane fixture).',
+      parameters: {
+        text: { type: 'string', required: true, description: 'Text to echo back.' },
+      },
+      execute: async (args) => {
+        await new Promise(resolve => setTimeout(resolve, 600))
+        return [{ type: 'text', text: args.text }]
+      },
+    }))
+    browser = await chromium.launch()
+  }, 240_000)
+
+  afterEach(async () => {
+    // Close the pages first: a console or host failure that only the unload
+    // surfaces still belongs to this test. The checks run in `finally` so a
+    // close failure cannot leave the watchers attached to the next test.
+    const opened = pages.splice(0)
+    const watched = tripwires
+    tripwires = []
+    try {
+      await Promise.all(opened.map(page => page.close()))
+    } finally {
+      for (const tripwire of watched) {
+        expect(tripwire.pageErrors).toEqual([])
+        expect(tripwire.warnings).toEqual([])
+      }
+      expect(hostFailures.splice(0)).toEqual([])
+    }
+  })
+
+  afterAll(async () => {
+    try {
+      await browser?.close()
+    } finally {
+      try {
+        await scaffold?.close()
+      } finally {
+        try {
+          // Teardown-phase host failures are still this suite's failures.
+          expect(hostFailures.splice(0)).toEqual([])
+        } finally {
+          process.off('unhandledRejection', onHostFailure)
+          process.off('uncaughtException', onHostFailure)
+        }
+      }
+    }
+  })
+
+  async function openPage(saved?: SessionId): Promise<Page> {
+    const page = await newEnglishPage(browser)
+    tripwires.push(watchConsole(page))
+    if (saved !== undefined) {
+      await page.addInitScript((id) => {
+        localStorage.setItem('dsh.sessions.current', JSON.stringify({ sessionId: id }))
+      }, saved)
+    }
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+    await page.locator('[data-composer-input]').first().waitFor({ timeout: 30_000 })
+    pages.push(page)
+    return page
+  }
+
+  /** Create one workspace-attached Session with its own identity. */
+  async function createSession(id: string): Promise<SessionId> {
+    const sessionId = SessionId(id)
+    await scaffold.ctx.agents.create({
+      sessionId,
+      meta: { cwd: scaffold.workspaceCwd },
+      agentOptions: scaffold.ctx.agentDefaultModel.currentSelection(),
+    })
+    await attachSession(sessionId)
+    return sessionId
+  }
+
+  async function selected(page: Page): Promise<string | undefined> {
+    return page.evaluate(() => {
+      const value = localStorage.getItem('dsh.sessions.current')
+      return value === null ? undefined : (JSON.parse(value) as { sessionId?: string }).sessionId
+    })
+  }
+
+  function members(): string[] {
+    const workspace = scaffold.ctx.workspaceRegistry.list()
+      .find(candidate => String(candidate.id) === primaryWorkspace)
+    if (workspace === undefined) throw new Error('primary workspace is missing')
+    return workspace.sessionIds.map(id => String(id))
+  }
+
+  /** Number of Agent Flow result cards the page shows for its selected Session. */
+  async function cardCount(page: Page): Promise<number> {
+    return await page.locator('[data-flow-progress]').count()
+  }
+
+  /** Start one flow through the real composer: picker click, claim token, typed message, submit. */
+  async function startFlowViaComposer(page: Page, flowName: string, text: string): Promise<void> {
+    const input = page.locator('[data-composer-input]').first()
+    // A previous submission's claim must clear before the next selection: a
+    // stale token plus a fresh one puts two claims in the same draft, which
+    // sends the editor's transforms into a loop and loses the new claim.
+    await expect.poll(async () => await input.innerText(), { timeout: 30_000 }).not.toContain('flow:')
+    // The trigger's accessible name carries a running suffix, so match the prefix.
+    await page.locator('button[aria-label^="Workflow"]').first().click()
+    await page.getByRole('menuitem', { name: flowName, exact: true }).click()
+    // The claim token must lead the draft before the message types in; clicking
+    // the menu row alone can land while the editor is still settling.
+    await expect.poll(async () => await input.innerText()).toContain(`flow:${flowName}`)
+    await input.click()
+    await page.keyboard.type(text)
+    await expect.poll(async () => await input.innerText()).toContain(text)
+    await page.keyboard.press('Enter')
+  }
+
+  /** Leave flow selection so the next submission is an ordinary chat message. */
+  async function clearFlowSelection(page: Page): Promise<void> {
+    await page.locator('button[aria-label^="Workflow"]').first().click()
+    await page.getByRole('menuitem', { name: 'No workflow', exact: true }).click()
+    const input = page.locator('[data-composer-input]').first()
+    await expect.poll(async () => await input.innerText()).not.toContain('flow:')
+  }
+
+  function runsFor(sessionId: string): Promise<FlowRun[]> {
+    return scaffold.ctx.agentFlows.listRuns().then(runs => runs.filter(run => String(run.parentSessionId) === sessionId))
+  }
+
+  /** Wait until the run started by one CASE reaches the expected status. */
+  async function waitForRun(sessionId: string, caseId: string, status: FlowRun['status'] = 'completed'): Promise<FlowRun> {
+    await expect.poll(async () => {
+      const candidate = (await runsFor(sessionId)).find(entry => entry.input.includes(caseId))
+      return candidate?.status
+    }, { timeout: 90_000, interval: 200 }).toBe(status)
+    return (await runsFor(sessionId)).find(entry => entry.input.includes(caseId))!
+  }
+
+  /** Release one `[HOLD]` request through the scripted wire's test control. */
+  function releaseHold(caseId: string): void {
+    const control = scaffold.ctx.get('scriptedLlm') as { release(caseId: string): void } | undefined
+    control?.release(caseId)
+  }
+
+  /** Model requests the scripted wire served for one CASE; a node restart adds one. */
+  function callsFor(caseId: string): number {
+    const control = scaffold.ctx.get('scriptedLlm') as { calls(caseId: string): number } | undefined
+    return control?.calls(caseId) ?? -1
+  }
+
+  function agentOf(sessionId: SessionId): Agent {
+    const agent = scaffold.ctx.agents.get(sessionId)
+    if (agent === undefined) throw new Error(`no live Agent for ${String(sessionId)}`)
+    return agent
+  }
+
+  function handoffOf(run: FlowRun, nodeId: string): string {
+    return run.nodeRuns.filter(entry => entry.nodeId === nodeId).map(entry => entry.handoff ?? '').join('\n')
+  }
+
+  it('E01: new conversation after a run is a different Session without the old results', async () => {
+    const first = await openPage()
+    await expect.poll(async () => await selected(first)).not.toBeUndefined()
+    const s1 = (await selected(first))!
+    const before = (await scaffold.ctx.agentFlows.listRuns()).length
+
+    await startFlowViaComposer(first, 'Brief flow', '[CASE:E01-L1AA] Write a brief for the book exchange event.')
+    const run = await waitForRun(s1, 'E01-L1AA')
+    expect((await scaffold.ctx.agentFlows.listRuns()).length).toBe(before + 1)
+    const workspaceTitle = basename(scaffold.workspaceCwd)
+    expect(String(run.flowId)).toBe(String(flowA))
+    expect(run.nodeRuns.find(node => node.nodeId === 'writer')).toMatchObject({ status: 'succeeded' })
+    expect(handoffOf(run, 'writer')).toContain('CASE:E01-L1AA')
+    expect(handoffOf(run, 'checker')).toContain('CASE:E01-L1AA')
+    // The completed run renders its result card on the Session that started it.
+    await expect.poll(async () => await cardCount(first)).toBe(1)
+
+    // New Session: a different identity that owns no run and shows no card.
+    await first.getByRole('button', { name: 'New session', exact: true }).first().click()
+    await expect.poll(async () => await selected(first)).not.toBe(s1)
+    const s2 = (await selected(first))!
+    expect(members().sort()).toEqual([s1, s2].sort())
+    expect(await runsFor(s2)).toEqual([])
+    expect(await cardCount(first)).toBe(0)
+
+    // A plain conversation in the same workspace shows no flow card either.
+    const s3 = await createSession('l1-e01-s3')
+    const plainPage = await openPage(s3)
+    const plainInput = plainPage.locator('[data-composer-input]').first()
+    await plainInput.click()
+    await plainPage.keyboard.type('plain hello from another session')
+    await plainPage.keyboard.press('Enter')
+    await plainPage.getByText('worker handled CASE:NO-CASE').last().waitFor({ timeout: 60_000 })
+    expect(await cardCount(plainPage)).toBe(0)
+
+    // Another workspace's Session never borrows the run's card.
+    const otherDir = await mkdtemp(join(tmpdir(), 'dsh-web-e2e-other-'))
+    const otherWorkspace = await scaffold.ctx.workspaceRegistry.create(otherDir)
+    const s4 = SessionId('l1-e01-s4')
+    await scaffold.ctx.agents.create({
+      sessionId: s4,
+      meta: { cwd: otherDir },
+      agentOptions: scaffold.ctx.agentDefaultModel.currentSelection(),
+    })
+    await otherWorkspace.attachSession(s4)
+    const otherPage = await openPage(s4)
+    expect(await cardCount(otherPage)).toBe(0)
+
+    // The finished run's Session stays visible history and opens its own transcript with its card.
+    await first.locator('[role="treeitem"]:not([aria-expanded])').filter({ hasText: workspaceTitle }).first().click()
+    await expect.poll(async () => await selected(first)).toBe(s1)
+    await expect.poll(async () => await cardCount(first)).toBe(1)
+
+    // A reload keeps both identities, the run association, and the card.
+    const reloadWarnings = tripwires[0]!.warnings.length
+    await first.reload({ waitUntil: 'load' })
+    await first.locator('[data-composer-input]').first().waitFor({ timeout: 30_000 })
+    expect(members().sort()).toEqual([s1, s2, String(s3)].sort())
+    expect((await runsFor(s1)).map(entry => String(entry.id))).toEqual([String(run.id)])
+    await expect.poll(async () => await cardCount(first)).toBe(1)
+    // The reload's connection-loss warning may surface late, so acknowledge it
+    // after the reload's own assertions; gap-repair stays fatal.
+    acknowledgeReloadConnectionLoss(tripwires[0]!, reloadWarnings)
+  }, 180_000)
+
+  it('E02/E03: one Flow keeps per-Session and per-run identity across repeated runs', async () => {
+    const sA = await createSession('l1-e02-a')
+    const sB = await createSession('l1-e02-b')
+    const pageA = await openPage(sA)
+    await startFlowViaComposer(pageA, 'Brief flow', '[CASE:E02-A1AA] Brief for the library event.')
+    const runA = await waitForRun(String(sA), 'E02-A1AA')
+    const pageB = await openPage(sB)
+    await startFlowViaComposer(pageB, 'Brief flow', '[CASE:E02-B1BB] Brief for the office lunch.')
+    const runB = await waitForRun(String(sB), 'E02-B1BB')
+
+    expect(String(runA.flowId)).toBe(String(runB.flowId))
+    expect(String(runA.id)).not.toBe(String(runB.id))
+    expect(String(runA.parentSessionId)).toBe(String(sA))
+    expect(String(runB.parentSessionId)).toBe(String(sB))
+    expect(handoffOf(runA, 'writer')).toContain('E02-A1AA')
+    expect(handoffOf(runA, 'writer')).not.toContain('E02-B1BB')
+    expect(handoffOf(runB, 'writer')).toContain('E02-B1BB')
+    expect(handoffOf(runB, 'writer')).not.toContain('E02-A1AA')
+
+    // E03: a second run on the same Session never overwrites the first.
+    await startFlowViaComposer(pageB, 'Brief flow', '[CASE:E03-B2CC] Brief for the school fair.')
+    const runB2 = await waitForRun(String(sB), 'E03-B2CC')
+    expect(String(runB2.id)).not.toBe(String(runB.id))
+    const sessionB = await runsFor(String(sB))
+    expect(sessionB.map(entry => String(entry.id)).sort()).toEqual([String(runB.id), String(runB2.id)].sort())
+    expect((await scaffold.ctx.agentFlows.readRun(runB.id)).input).toContain('E02-B1BB')
+  }, 240_000)
+
+  it('E04: two business Flows keep their own graphs and runs', async () => {
+    const sC = await createSession('l1-e04-c')
+    const page = await openPage(sC)
+    await startFlowViaComposer(page, 'Design flow', '[CASE:E04-C1DD] Design and implement the sorting module.')
+    const run = await waitForRun(String(sC), 'E04-C1DD')
+    expect(String(run.flowId)).toBe(String(flowB))
+    // The scripted review rejects the first attempt and approves the second.
+    const implementRuns = run.nodeRuns.filter(entry => entry.nodeId === 'implement')
+    expect(implementRuns.map(entry => entry.iteration)).toEqual([0, 1])
+    const reviewRuns = run.nodeRuns.filter(entry => entry.nodeId === 'review')
+    expect(reviewRuns.map(entry => entry.iteration)).toEqual([0, 1])
+    expect(handoffOf(run, 'review')).toContain('Result: rework')
+    expect(handoffOf(run, 'review')).toContain('Result: approved')
+    expect(run.nodeRuns.filter(entry => entry.nodeId === 'verdict').every(entry => entry.status === 'succeeded')).toBe(true)
+    expect(run.nodeRuns.some(entry => entry.status === 'running' || entry.status === 'conversing' || entry.status === 'pending')).toBe(false)
+    expect((await runsFor(String(sC))).every(entry => String(entry.flowId) === String(flowB))).toBe(true)
+  }, 240_000)
+
+  it('E05: one Session runs two Flows and returns to ordinary chat', async () => {
+    const sD = await createSession('l1-e05-d')
+    const page = await openPage(sD)
+    await startFlowViaComposer(page, 'Brief flow', '[CASE:E05-D1EE] Brief for the garden club.')
+    await waitForRun(String(sD), 'E05-D1EE')
+    await startFlowViaComposer(page, 'Review flow', '[CASE:E05-D2FF] Assess the signup system.')
+    const reviewRun = await waitForRun(String(sD), 'E05-D2FF')
+    expect(String(reviewRun.flowId)).toBe(String(flowC))
+    const summary = reviewRun.nodeRuns.find(entry => entry.nodeId === 'summary')!
+    expect(summary.inputs?.map(input => input.nodeId).sort()).toEqual(['engineer', 'product', 'qa'])
+    const flows = new Set((await runsFor(String(sD))).map(entry => String(entry.flowId)))
+    expect(flows).toEqual(new Set([String(flowA), String(flowC)]))
+
+    // Leaving the picker returns the composer to ordinary chat: the unique
+    // message is accepted, answered in the page, and starts no run.
+    const before = (await runsFor(String(sD))).length
+    const cursor = scaffold.ctx.sessions.get(sD)?.seq ?? 0
+    await clearFlowSelection(page)
+    const input = page.locator('[data-composer-input]').first()
+    const message = 'plain-after-flows-probe'
+    await input.click()
+    await page.keyboard.type(message)
+    await page.keyboard.press('Enter')
+    await page.getByText(message).last().waitFor({ timeout: 30_000 })
+    await page.getByText('worker handled CASE:NO-CASE').last().waitFor({ timeout: 60_000 })
+    // The user message and its reply are two durable events past the cursor.
+    expect(scaffold.ctx.sessions.get(sD)?.seq ?? 0).toBeGreaterThan(cursor + 1)
+    expect(await runsFor(String(sD))).toHaveLength(before)
+  }, 240_000)
+
+  it('E06: cancelling one concurrent run leaves the other untouched', async () => {
+    const sE = await createSession('l1-e06-e')
+    const sF = await createSession('l1-e06-f')
+    const pageE = await openPage(sE)
+    await startFlowViaComposer(pageE, 'Brief flow', '[CASE:E06-E1GG] [HOLD] Brief for the marathon.')
+    await expect.poll(async () => (await runsFor(String(sE)))[0]?.status, { timeout: 30_000 }).toBe('running')
+    const held = (await runsFor(String(sE)))[0]!
+    const pageF = await openPage(sF)
+    await startFlowViaComposer(pageF, 'Brief flow', '[CASE:E06-F1HH] [HOLD] Brief for the museum tour.')
+    await expect.poll(async () => (await runsFor(String(sF)))[0]?.status, { timeout: 30_000 }).toBe('running')
+    const blocked = (await runsFor(String(sF)))[0]!
+
+    // Cancel A through its result card, while B is still executing.
+    const card = pageE.locator('[data-flow-progress]')
+    await card.waitFor({ timeout: 30_000 })
+    await card.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect.poll(async () => (await scaffold.ctx.agentFlows.readRun(held.id)).status).toBe('cancelled')
+    expect((await scaffold.ctx.agentFlows.readRun(blocked.id)).status).toBe('running')
+
+    // B releases and finishes its remaining node; A's cancellation did not stop it.
+    releaseHold('E06-F1HH')
+    const completed = await waitForRun(String(sF), 'E06-F1HH')
+    expect(completed.nodeRuns.find(entry => entry.nodeId === 'writer')?.status).toBe('succeeded')
+    expect(completed.nodeRuns.find(entry => entry.nodeId === 'checker')?.status).toBe('succeeded')
+    expect((await scaffold.ctx.agentFlows.readRun(held.id)).status).toBe('cancelled')
+  }, 240_000)
+
+  it('E07: two Flows wait on their users at once and a reply advances only its own run', async () => {
+    const sK = await createSession('l1-e07-k')
+    const sL = await createSession('l1-e07-l')
+    const pageK = await openPage(sK)
+    const pageL = await openPage(sL)
+    await startFlowViaComposer(pageK, 'Verify flow', '[CASE:E07-K1OO] Verify the launch checklist.')
+    await startFlowViaComposer(pageL, 'Clarify flow', '[CASE:E07-L1PP] Clarify the migration plan.')
+    for (const [sessionId, node] of [[sK, 'verify'], [sL, 'clarify']] as const) {
+      await expect.poll(async () => {
+        const run = (await runsFor(String(sessionId)))[0]
+        return run?.nodeRuns.find(entry => entry.nodeId === node)?.status
+      }, { timeout: 60_000 }).toBe('conversing')
+    }
+    await pageK.getByText('round 1 needs more detail').waitFor({ timeout: 60_000 })
+    await pageL.getByText('round 1 needs more detail').waitFor({ timeout: 60_000 })
+
+    // K's reply stays inside K's conversation: only K's run reaches round 2.
+    const inputK = pageK.locator('[data-composer-input]').first()
+    await inputK.click()
+    await pageK.keyboard.type('Add the rollback step.')
+    await pageK.keyboard.press('Enter')
+    await pageK.getByText('round 2 needs more detail').waitFor({ timeout: 60_000 })
+    expect(await pageL.getByText('round 2 needs more detail').count()).toBe(0)
+    expect(await pageL.getByText('Add the rollback step.').count()).toBe(0)
+    expect((await runsFor(String(sL)))[0]!.nodeRuns.find(entry => entry.nodeId === 'clarify')!.status).toBe('conversing')
+
+    // L's own composer still serves its waiting run: the confirmation finishes
+    // it while K's run keeps waiting untouched.
+    const inputL = pageL.locator('[data-composer-input]').first()
+    await inputL.click()
+    await pageL.keyboard.type('READY-TO-PROCEED')
+    await pageL.keyboard.press('Enter')
+    await pageL.getByText('round 2 confirmed').waitFor({ timeout: 60_000 })
+    const finished = await waitForRun(String(sL), 'E07-L1PP')
+    expect(finished.snapshot.name).toBe('Clarify flow')
+    expect(finished.nodeRuns.every(entry => entry.status === 'succeeded')).toBe(true)
+    expect((await runsFor(String(sK)))[0]!.status).toBe('running')
+    await expect.poll(async () => await pageK.locator('[data-flow-progress]').innerText(), { timeout: 30_000 })
+      .toContain('Flow waiting for your reply')
+
+    // K confirms last; its conversation carried only its own rounds.
+    await inputK.click()
+    await pageK.keyboard.type('READY-TO-PROCEED')
+    await pageK.keyboard.press('Enter')
+    await pageK.getByText('round 3 confirmed').waitFor({ timeout: 60_000 })
+    const kRun = await waitForRun(String(sK), 'E07-K1OO')
+    expect(String(kRun.flowId)).toBe(String(flowD))
+    expect(kRun.nodeRuns.every(entry => entry.status === 'succeeded')).toBe(true)
+    expect(await pageL.getByText('round 3 confirmed').count()).toBe(0)
+  }, 240_000)
+
+  // E08's original unhandled Host error (`agent "<id>" cannot read inbox
+  // state: its projection registration is not active`) had two reproducible
+  // paths, both now pinned separately: the core regression covers AgentLoop
+  // unload overlapping an external parent cancel, and the runtime only cancels
+  // an interactive Agent still in its registry. This test keeps watching for
+  // host-level failures in afterEach, and covers the UI-facing fact: both runs
+  // start through the composer, the picker separates them by the request that
+  // started each, and cancelling one runId leaves the other executing. The
+  // second start comes from a second tab: re-claiming the same editor is the
+  // claim-token transform path whose transform cascade is tracked separately.
+  it('E08: two runs in one Session cancel by runId, not by Flow', async () => {
+    const sG = await createSession('l1-e08-g')
+    const page = await openPage(sG)
+    await startFlowViaComposer(page, 'Brief flow', '[CASE:E08-G1II] [HOLD] Held brief.')
+    await expect.poll(async () => (await runsFor(String(sG))).length, { timeout: 30_000 }).toBe(1)
+    const held = (await runsFor(String(sG)))[0]!
+    const second = await openPage(sG)
+    await startFlowViaComposer(second, 'Brief flow', '[CASE:E08-G2JJ] [HOLD] Second brief while the first holds.')
+    await expect.poll(async () => (await runsFor(String(sG))).length, { timeout: 30_000 }).toBe(2)
+    const live = (await runsFor(String(sG))).find(run => run.id !== held.id)!
+
+    // The picker names each run by its request, so the target is chosen from
+    // what the user can see, not from the roster's position.
+    const card = second.locator('[data-flow-progress]')
+    await card.waitFor({ timeout: 30_000 })
+    await card.getByRole('button', { name: 'Choose the run to view', exact: true }).click()
+    const runRows = second.getByRole('menuitem')
+    await expect.poll(async () => await runRows.count()).toBe(2)
+    await expect.poll(async () => await runRows.allInnerTexts()).toEqual(expect.arrayContaining([
+      expect.stringContaining('Held brief.'),
+      expect.stringContaining('Second brief'),
+    ]))
+    await runRows.filter({ hasText: 'Held brief.' }).click()
+    await card.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect.poll(async () => (await scaffold.ctx.agentFlows.readRun(held.id)).status).toBe('cancelled')
+    expect((await scaffold.ctx.agentFlows.readRun(live.id)).status).toBe('running')
+
+    releaseHold('E08-G2JJ')
+    await expect.poll(async () => (await scaffold.ctx.agentFlows.readRun(live.id)).status, { timeout: 90_000 }).toBe('completed')
+    expect((await scaffold.ctx.agentFlows.readRun(held.id)).status).toBe('cancelled')
+  }, 240_000)
+
+  it('E09: a same-named clone is a distinct Flow identity', async () => {
+    const original = await scaffold.ctx.agentFlows.readFlow(flowA)
+    const clone = await scaffold.ctx.agentFlows.saveFlow({
+      name: original.name,
+      nodes: original.nodes,
+      edges: original.edges,
+    })
+    const sH = await createSession('l1-e09-h')
+    const page = await openPage(sH)
+
+    // The picker shows two rows with the same label; each click picks one and
+    // the runs stay keyed by flowId, never by the shared display name.
+    const pickBrief = async (index: number, text: string): Promise<void> => {
+      await page.getByRole('button', { name: 'Workflow', exact: true }).click()
+      await page.getByRole('menuitem', { name: 'Brief flow', exact: true }).nth(index).click()
+      const input = page.locator('[data-composer-input]').first()
+      await expect.poll(async () => await input.innerText()).toContain('flow:Brief flow')
+      await input.click()
+      await page.keyboard.type(text)
+      await expect.poll(async () => await input.innerText()).toContain(text)
+      await page.keyboard.press('Enter')
+    }
+    await pickBrief(0, '[CASE:E09-H1KK] Brief for the first clone.')
+    await waitForRun(String(sH), 'E09-H1KK')
+    await pickBrief(1, '[CASE:E09-H2LL] Brief for the second clone.')
+    await waitForRun(String(sH), 'E09-H2LL')
+
+    const runs = await runsFor(String(sH))
+    expect(runs).toHaveLength(2)
+    expect(new Set(runs.map(entry => String(entry.id))).size).toBe(2)
+    // Both picks must actually run the two distinct flows: neither row may
+    // silently start the same Flow twice.
+    expect(new Set(runs.map(entry => String(entry.flowId)))).toEqual(new Set([String(flowA), String(clone.id)]))
+    expect((await scaffold.ctx.agentFlows.listFlows()).filter(entry => entry.name === 'Brief flow')).toHaveLength(2)
+  }, 240_000)
+
+  it('E17: an interactive node converses over several rounds and settles on the user confirmation', async () => {
+    const sI = await createSession('l1-e17-i')
+    const page = await openPage(sI)
+    await startFlowViaComposer(page, 'Clarify flow', '[CASE:E17-I1MM] [SLOW] Clarify what the report must contain.')
+    const card = page.locator('[data-flow-progress]')
+    await card.waitFor({ timeout: 30_000 })
+
+    // The scripted slow stream proves the card folds real activity, not just
+    // the record. Reasoning, Writing, and — once the scripted agent calls its
+    // tool — Running tools each have to appear; the transient stages are
+    // recorded in-page, because the tool call itself settles in milliseconds.
+    // The observer watches the document body: the card node may be replaced
+    // while the roster refreshes.
+    await page.evaluate(() => {
+      const seen: string[] = []
+      const record = (): void => {
+        const text = document.querySelector('[data-flow-progress]')?.textContent ?? ''
+        for (const label of ['Reasoning', 'Writing', 'Running tools']) {
+          if (text.includes(label) && !seen.includes(label)) seen.push(label)
+        }
+      }
+      record()
+      new MutationObserver(record).observe(document.body, { subtree: true, childList: true, characterData: true })
+      window.__flowStages = seen
+    })
+    const stages = new Set<string>()
+    await expect.poll(async () => {
+      const text = await card.innerText()
+      for (const label of ['Reasoning', 'Writing', 'Running tools']) {
+        if (text.includes(label)) stages.add(label)
+      }
+      for (const label of await page.evaluate(() => window.__flowStages ?? [])) stages.add(label)
+      return [...stages]
+    }, { timeout: 60_000, interval: 100 }).toEqual(expect.arrayContaining(['Reasoning', 'Writing', 'Running tools']))
+    await expect.poll(async () => await card.innerText(), { timeout: 30_000 }).toContain('Flow running')
+    expect(await card.innerText()).not.toContain('No new recorded activity')
+
+    await expect.poll(async () => {
+      const run = (await runsFor(String(sI)))[0]
+      return run?.nodeRuns.find(entry => entry.nodeId === 'clarify')?.status
+    }, { timeout: 60_000 }).toBe('conversing')
+    const conversing = (await runsFor(String(sI)))[0]!
+    expect(conversing.status).toBe('running')
+    await page.getByText('round 1 needs more detail').waitFor({ timeout: 60_000 })
+    await expect.poll(async () => await card.innerText(), { timeout: 30_000 }).toContain('Flow waiting for your reply')
+
+    // The user answers in the interactive conversation: the card leaves the
+    // waiting posture while the node works the reply — still no Result, so the
+    // node returns to waiting instead of failing or settling. Round numbers
+    // make each reply unique, so a stale first reply cannot satisfy the wait.
+    const input = page.locator('[data-composer-input]').first()
+    await input.click()
+    await page.keyboard.type('Please include the budget table.')
+    await page.keyboard.press('Enter')
+    await expect.poll(async () => {
+      const text = await card.innerText()
+      return /Reasoning|Writing/.test(text) && !text.includes('Flow waiting for your reply')
+    }, { timeout: 30_000, interval: 100 }).toBe(true)
+    await page.getByText('round 2 needs more detail').waitFor({ timeout: 60_000 })
+    expect((await runsFor(String(sI)))[0]?.nodeRuns.find(entry => entry.nodeId === 'clarify')?.status).toBe('conversing')
+    await expect.poll(async () => await card.innerText(), { timeout: 30_000 }).toContain('Flow waiting for your reply')
+
+    // Confirmation closes the conversation with the Result word; the rest runs.
+    await input.click()
+    await page.keyboard.type('READY-TO-PROCEED')
+    await page.keyboard.press('Enter')
+    await page.getByText('round 3 confirmed').waitFor({ timeout: 60_000 })
+    const settled = await waitForRun(String(sI), 'E17-I1MM')
+    expect(settled.nodeRuns.find(entry => entry.nodeId === 'clarify')?.status).toBe('succeeded')
+    expect(settled.nodeRuns.find(entry => entry.nodeId === 'after')?.status).toBe('succeeded')
+    expect(settled.nodeRuns.some(entry => entry.status === 'running' || entry.status === 'conversing')).toBe(false)
+    expect(await runsFor(String(sI))).toHaveLength(1)
+    await expect.poll(async () => await card.innerText(), { timeout: 30_000 }).toContain('Flow completed')
+  }, 240_000)
+
+  it('E19: a cut wire interrupts observation and the page catches up without restarting nodes', async () => {
+    const sM = await createSession('l1-e19-m')
+    const page = await openPage(sM)
+    const caseId = 'E19-M1QQ'
+    await startFlowViaComposer(page, 'Review flow', `[CASE:${caseId}] [HOLD] Assess the data platform.`)
+    // A dispatched node reads running before its child opens, so wait for the
+    // recorded agent Sessions, then for the requests to actually hold.
+    await expect.poll(async () => {
+      const run = (await runsFor(String(sM)))[0]
+      return run?.nodeRuns.filter(entry => entry.status === 'running' && entry.agentSessionId !== undefined).length
+    }, { timeout: 60_000 }).toBe(3)
+    const before = (await runsFor(String(sM)))[0]!
+    const nodeSessions = new Map(before.nodeRuns
+      .filter(entry => entry.status === 'running' && entry.agentSessionId !== undefined)
+      .map(entry => [entry.nodeId, String(entry.agentSessionId)] as const))
+    await expect.poll(() => callsFor(caseId), { timeout: 60_000 }).toBe(3)
+
+    // Cut only this page's transport; the Host keeps executing the run.
+    const tripwire = tripwires.at(-1)!
+    const warningStart = tripwire.warnings.length
+    await page.context().setOffline(true)
+    // The card itself reports the interrupted observation, not a page error.
+    await expect.poll(async () => await page.locator('[data-flow-progress]').innerText(), { timeout: 30_000 })
+      .toContain('Status updates are interrupted')
+
+    // The Host finishes the whole run while the page cannot observe it.
+    releaseHold(caseId)
+    await expect.poll(async () => (await scaffold.ctx.agentFlows.readRun(before.id)).status, { timeout: 90_000 })
+      .toBe('completed')
+
+    // Restore the wire; the page catches up to the finished run.
+    await page.context().setOffline(false)
+    await expect.poll(async () => await page.locator('[data-flow-progress]').innerText(), { timeout: 30_000 })
+      .toContain('Flow completed')
+
+    const after = (await runsFor(String(sM)))[0]!
+    expect(String(after.id)).toBe(String(before.id))
+    expect(after.nodeRuns.map(entry => entry.nodeId).sort())
+      .toEqual(['end', 'engineer', 'product', 'qa', 'start', 'summary'])
+    // No node restarted across the cut: the role Sessions the record opened
+    // before the cut are exactly the ones the finished run reports.
+    for (const [nodeId, sessionId] of nodeSessions) {
+      const entry = after.nodeRuns.find(candidate => candidate.nodeId === nodeId)!
+      expect(String(entry.agentSessionId), `node ${nodeId}`).toBe(sessionId)
+    }
+    expect(callsFor(caseId)).toBe(4)
+    // Console warnings from the intentional cut are its own consequence; the
+    // assertion above already proved the page recovered, so they are expected.
+    // Only the expected connection-loss wording is exempt: a gap repair or
+    // discontinuity after the cut still means the page did not recover cleanly.
+    acknowledgeReloadConnectionLoss(tripwire, warningStart)
+  }, 240_000)
+
+  it('E20: a page refresh keeps the in-flight run and never restarts its nodes', async () => {
+    const sJ = await createSession('l1-e20-j')
+    const page = await openPage(sJ)
+    const caseId = 'E20-J1NN'
+    await startFlowViaComposer(page, 'Review flow', `[CASE:${caseId}] [HOLD] Assess the night market.`)
+    // A dispatched node reads running before its child opens, so wait for the
+    // recorded agent Sessions, then for the requests to actually hold.
+    await expect.poll(async () => {
+      const run = (await runsFor(String(sJ)))[0]
+      return run?.nodeRuns.filter(entry => entry.status === 'running' && entry.agentSessionId !== undefined).length
+    }, { timeout: 60_000 }).toBe(3)
+    const running = (await runsFor(String(sJ)))[0]!
+    const nodeSessions = new Map(running.nodeRuns
+      .filter(entry => entry.status === 'running' && entry.agentSessionId !== undefined)
+      .map(entry => [entry.nodeId, String(entry.agentSessionId)] as const))
+    await expect.poll(() => callsFor(caseId), { timeout: 60_000 }).toBe(3)
+
+    const reloadWarnings = tripwires.at(-1)!.warnings.length
+    await page.reload({ waitUntil: 'load' })
+    await page.locator('[data-composer-input]').first().waitFor({ timeout: 30_000 })
+    // The client re-reads the run state: the selector reports the in-flight run.
+    await expect.poll(async () => await page.locator('button[aria-label^="Workflow"]').first().getAttribute('aria-label'), { timeout: 30_000 })
+      .toContain('run in flight')
+
+    // No duplicate run and no node work restarted by the refresh.
+    const afterRefresh = await runsFor(String(sJ))
+    expect(afterRefresh).toHaveLength(1)
+    expect(String(afterRefresh[0]!.id)).toBe(String(running.id))
+    expect((await scaffold.ctx.agentFlows.readRun(running.id)).status).toBe('running')
+    for (const [nodeId, sessionId] of nodeSessions) {
+      const entry = afterRefresh[0]!.nodeRuns.find(candidate => candidate.nodeId === nodeId)!
+      expect(String(entry.agentSessionId), `node ${nodeId}`).toBe(sessionId)
+    }
+    expect(callsFor(caseId)).toBe(3)
+
+    await scaffold.ctx.agentFlows.cancel(agentOf(sJ), running.id)
+    await expect.poll(async () => (await scaffold.ctx.agentFlows.readRun(running.id)).status).toBe('cancelled')
+    expect(await runsFor(String(sJ))).toHaveLength(1)
+    // Cancellation stopped the held requests; it did not restart any node.
+    expect(callsFor(caseId)).toBe(3)
+    // The reload's connection-loss warning may surface late, after the old
+    // page context finished unloading, so acknowledge it once the test's own
+    // assertions are done; gap-repair and discontinuity stay fatal.
+    acknowledgeReloadConnectionLoss(tripwires.at(-1)!, reloadWarnings)
+  }, 240_000)
+})

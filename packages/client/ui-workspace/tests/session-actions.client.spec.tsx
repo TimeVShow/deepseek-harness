@@ -50,7 +50,7 @@ const idSet = (...ids: string[]): ReadonlySet<SessionId> => new Set(ids.map(sid)
 /** The row every action is rendered for: its owner share as the browser passes it. */
 const ROW = { sessionId: sid('one'), displayTitle: 'Session title' }
 const one: SessionSummary = {
-  id: ROW.sessionId, displayTitle: ROW.displayTitle, running: false, blank: false, updatedAt: 1, retainedBy: {},
+  id: ROW.sessionId, displayTitle: ROW.displayTitle, running: false, blank: false, occupied: false, updatedAt: 1, retainedBy: {},
 }
 const sessions: SessionListState = {
   ids: [one.id], byId: { [one.id]: one }, phase: 'ready', projectionsBySession: {},

@@ -28,6 +28,7 @@ import { installModelSelectionProjection } from './model-selection-projection.ts
 import { SessionSkillCatalog } from './skill-catalog.ts'
 import { SessionMediaReferences } from './media-references.ts'
 import { ArchivedSessionGate } from './archived-session-gate.ts'
+import { sessionUsageOf } from './usage.ts'
 import type {
   ModelCatalog,
   SessionWorkspacePathApplication,
@@ -64,6 +65,7 @@ import type {
 } from './types.ts'
 
 export type * from './types.ts'
+export type { SessionUsage } from './usage.ts'
 export { ApiSessionNotFound } from './agent.ts'
 export { SessionFileReferences } from './file-references.ts'
 export { SessionSkillCatalog } from './skill-catalog.ts'
@@ -196,6 +198,29 @@ export class SessionController extends TypertRemoteService {
       if (event.type !== 'user/message' || event.data.source.kind !== 'user') return
       ctx.emit('api-session/activity', session.id, event.time)
     })
+    // A provider that occupies a Session while this Host is live reports it
+    // here; republishing the summary lets client rows stop presenting that
+    // Session as a blank placeholder without waiting for the next list read.
+    let stopUsageFeed: (() => void) | undefined
+    const bindUsageFeed = (): void => {
+      stopUsageFeed?.()
+      stopUsageFeed = undefined
+      const usage = sessionUsageOf(ctx)
+      if (usage?.subscribe === undefined) return
+      stopUsageFeed = usage.subscribe((sessionId) => {
+        const session = ctx.sessions.get(sessionId)
+        if (session === undefined) return
+        ctx.emit('api-session/added', this.listState.summaryFor(session))
+      })
+    }
+    ctx.on('internal/service', (name: string) => {
+      if (name === 'sessionUsage') bindUsageFeed()
+    })
+    bindUsageFeed()
+    ctx.effect(() => () => {
+      stopUsageFeed?.()
+      stopUsageFeed = undefined
+    }, 'session-controller.usage-feed')
   }
 
   private promote(observation: SessionObservation): void {

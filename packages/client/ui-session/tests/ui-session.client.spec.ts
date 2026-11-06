@@ -134,6 +134,7 @@ function createSessionsBench(ctx: Context): SessionsBench {
           running: false,
           retainedBy: {},
           blank: false,
+          occupied: false,
           updatedAt: 1,
         }
       })
@@ -526,7 +527,7 @@ describe('UiSession status', () => {
     const bench = createSessionsBench(ctx)
     const id = sessionId('catalog-only')
     bench.list.update((draft) => {
-      draft.byId[id] = { id, displayTitle: id, running: false, retainedBy: {}, blank: false, updatedAt: 0 }
+      draft.byId[id] = { id, displayTitle: id, running: false, retainedBy: {}, blank: false, occupied: false, updatedAt: 0 }
     })
     const service = createUiSession(ctx, bench)
     expect(service.sessionStatus.getSnapshot().get(id)?.running).toBeUndefined()

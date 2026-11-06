@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { Context, Service, symbols } from '@deepseek-ai/cordis'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { AgentDeliveryClosedError, agentEvents } from '@deepseek-ai/dsh-agent'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 
 import type {
@@ -376,5 +376,14 @@ describe('AgentRegistry factory seam', () => {
     await ctx.agents.resume({ resumeSessionId: SessionId('resume-s') })
     const raw = (traced as unknown as { [symbols.original]?: TracedFactory })[symbols.original]
     expect(states.get(raw!)).toEqual(['create', 'resume'])
+  })
+})
+
+describe('AgentDeliveryClosedError', () => {
+  it('names the agent and marks itself for teardown-aware callers', () => {
+    const error = new AgentDeliveryClosedError('closed-agent')
+    expect(error).toBeInstanceOf(Error)
+    expect(error.name).toBe('AgentDeliveryClosedError')
+    expect(error.message).toBe('agent "closed-agent" disposal has begun; it no longer accepts input')
   })
 })

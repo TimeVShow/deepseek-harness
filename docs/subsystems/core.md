@@ -75,7 +75,10 @@ interface Agent {
   /**
    * Clear queued and steering work — unless `keepInbox` — and abort the active
    * turn or between-turn task. The first cause wins for that activity. With no
-   * active activity, cancellation is a no-op and does not arm later work.
+   * active activity, cancellation is a no-op and does not arm later work. Once
+   * the machine's disposal has begun, a cause other than `disposed` is a
+   * redundant no-op: the disposal's own disposed-cause cancel owns the final
+   * abort and drain.
    * @param cause - the stable caller intent carried by the active operation signal.
    * @param options - cancellation options; `keepInbox` preserves pending work.
    */
@@ -107,6 +110,9 @@ interface Agent {
    * cancel leaves it parked. A wake submitted while already idle always opens
    * its turn boundary, even when its message is cleared before the driver
    * claims ([cancel-convergence wake latch](../../../../.agents/notes/implemented/bug-fix/2026-08-07-cancel-convergence-wake-latch.md)).
+   * Delivery after the machine's disposal begins rejects with
+   * {@link AgentDeliveryClosedError}: teardown owns the pending queue from
+   * then on.
    * @param message - identified content and the source that supplied it.
    * @param target - the preferred next-turn or next-step inbox boundary.
    * @param wakeup - whether delivery may wake the driver.
@@ -115,7 +121,8 @@ interface Agent {
 
   /**
    * Queue an ordinary follow-up turn and wake the driver. The item becomes the
-   * sole ordinary message of its own turn.
+   * sole ordinary message of its own turn. Delivery after the machine's
+   * disposal begins rejects with {@link AgentDeliveryClosedError}.
    * @param message - identified prompt content and the source that supplied it.
    */
   followup(message: UserMessage): void
@@ -124,7 +131,9 @@ interface Agent {
    * Submit steering for the nearest step. An idle driver starts a turn;
    * a running driver consumes it at its next step boundary.
    * A rejected step leaves steering parked in the inbox until the next
-   * wake; cancellation or disposal may discard pending steering.
+   * wake; cancellation or disposal may discard pending steering. Delivery
+   * after the machine's disposal begins rejects with
+   * {@link AgentDeliveryClosedError}.
    * @param message - identified steering content and the source that supplied it.
    */
   steer(message: UserMessage): void
@@ -134,7 +143,9 @@ interface Agent {
    * driver. A running driver claims it at the nearest later step boundary;
    * idle drivers leave it pending until follow-up or steering
    * wakes them. It may miss a request whose pre-step already claimed its
-   * batch. Cancellation or disposal may discard pending context.
+   * batch. Cancellation or disposal may discard pending context. Delivery
+   * after the machine's disposal begins rejects with
+   * {@link AgentDeliveryClosedError}.
    * @param message - identified injected context and the source that supplied it.
    */
   inject(message: UserMessage): void
@@ -211,7 +222,12 @@ Dispatch requires `provider` and `model` after `agent/request`. An explicit `rea
 The inbox is the delivery vocabulary — two ordered pending-message lists the agent owns as a durable projection:
 
 ```ts type-equiv
-/** Agent-owned access to pending work; concrete storage belongs to the driver. */
+/**
+ * Agent-owned access to pending work; concrete storage belongs to the driver.
+ * Reads stay available to lifecycle observers, but every mutation rejects with
+ * {@link AgentDeliveryClosedError} once the machine's disposal begins:
+ * teardown owns the final clear.
+ */
 interface Inbox {
   /** Prompts awaiting individual turns. */
   readonly nextTurn: readonly UserMessage[]

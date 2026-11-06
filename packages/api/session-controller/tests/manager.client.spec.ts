@@ -29,13 +29,14 @@ type SummaryOver = Partial<{
   running: boolean
   agentAvailable: boolean
   blank: boolean
+  occupied: boolean
   cwd: string
   parentSessionId: SessionId
   origin: 'subagent'
 }>
 
 function summary(sessionId: SessionId, over: SummaryOver = {}) {
-  return { agentAvailable: true, sessionId, updatedAt: 100, running: false, blank: false, ...over }
+  return { agentAvailable: true, sessionId, updatedAt: 100, running: false, blank: false, occupied: false, ...over }
 }
 
 function makeManager(

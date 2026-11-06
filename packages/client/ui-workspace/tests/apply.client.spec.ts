@@ -29,7 +29,7 @@ import { apply as hostApply } from '../src/index.ts'
 
 const sid = (id: string) => id as SessionId
 const summary = (id: string, updatedAt: number): SessionSummary => ({
-  id: sid(id), displayTitle: id, running: false, blank: false, updatedAt, retainedBy: {},
+  id: sid(id), displayTitle: id, running: false, blank: false, occupied: false, updatedAt, retainedBy: {},
 })
 const sessionState = (items: readonly SessionSummary[]): SessionListState => ({
   ids: items.map(item => item.id),

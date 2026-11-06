@@ -15,7 +15,7 @@ import type {
   PreStepDecision,
   RequestErrorAction,
 } from '@deepseek-ai/dsh-agent'
-import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
+import { AgentDeliveryClosedError, agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
 import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
 import {
   LlmError,
@@ -117,6 +117,8 @@ export class ReactLoopAgent implements Agent {
   private readonly systemPrompt: SystemPromptProjection
   /** Identities fully frozen by this loop; weak references do not retain replaced history. */
   private readonly frozenMessages = new WeakSet<Message>()
+  /** Set the moment lifecycle disposal takes over this machine's quiescence. */
+  private disposalStarted = false
 
   constructor(
     private loopCtx: Context,
@@ -151,6 +153,12 @@ export class ReactLoopAgent implements Agent {
   }
 
   send(message: UserMessage, target: InboxTarget, wakeup: boolean): void {
+    // A disposing machine accepts no further input: its inbox already belongs
+    // to the teardown that will discard pending work, and a durable insert from
+    // here could resurface when the Session is resumed.
+    if (this.disposalStarted) {
+      throw new AgentDeliveryClosedError(this.id)
+    }
     // Waking input cannot join an aborted activity, so it starts the next turn.
     // Captured before the insertion so a reentrant cancel from a splice observer cannot reclassify it.
     const wakingAfterAbort = wakeup && this.phase.kind !== 'idle' && this.phase.abort.signal.aborted
@@ -171,9 +179,27 @@ export class ReactLoopAgent implements Agent {
     this.send(input, 'next-step', false)
   }
 
+  /**
+   * Transfer cancellation ownership to lifecycle disposal. From this point the
+   * memoized teardown owns this machine's quiescence: its own disposed-cause
+   * cancel durably clears pending input and aborts the phase, so an external
+   * cancel racing the teardown (for example a subagent run abort landing while
+   * the machine drains under Host teardown) is a redundant no-op instead of a
+   * second clear racing the teardown's own.
+   */
+  beginDisposal(): void {
+    this.disposalStarted = true
+    this.inbox.beginDisposal()
+    if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
+  }
+
   cancel(cause: AgentCancelCause, options: CancelOptions = {}): void {
+    if (this.disposalStarted && cause.kind !== 'disposed') return
     if (!options.keepInbox) {
-      this.inbox.clear()
+      // The disposal owns the one clear that may still run after beginDisposal
+      // closed public delivery.
+      if (this.disposalStarted) this.inbox.disposeClear()
+      else this.inbox.clear()
       if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
     }
     if (this.phase.kind !== 'idle') this.phase.abort.abort(cause)
@@ -515,7 +541,10 @@ export class ReactLoopAgent implements Agent {
         if (toolCalls.length === 0) return { kind: 'completed' }
         const { concluded } = await executeToolCalls(
           this.loopCtx, turn, step, toolCalls, signal,
-          context => this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context]),
+          // The machine's own result context keeps the machine-internal
+          // delivery path: a tool that settles while the machine drains parks
+          // its context instead of losing it with the aborted turn.
+          (context) => { this.inbox.appendInternal('next-step', context) },
         )
         return concluded ? { kind: 'completed' } : null
       } catch (error: unknown) {

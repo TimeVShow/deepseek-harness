@@ -373,6 +373,21 @@
       "source": "packages/experimental/agent-team/src/types.ts"
     },
     {
+      "doc": "docs/subsystems/agent-flow.md",
+      "symbol": "FlowStartRequest",
+      "source": "packages/experimental/agent-flow/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/agent-flow.md",
+      "symbol": "FlowRunController",
+      "source": "packages/experimental/agent-flow/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/agent-flow.md",
+      "symbol": "FlowExecutor",
+      "source": "packages/experimental/agent-flow/src/types.ts"
+    },
+    {
       "doc": "docs/subsystems/commands.md",
       "symbol": "CommandInputDescriptor",
       "source": "packages/interaction/commands/src/types.ts"

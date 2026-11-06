@@ -1,18 +1,18 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context, symbols, type EffectMeta, type Fiber } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
-import AgentRegistry, { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { AgentDeliveryClosedError, agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import { MockAdapter, textResponse } from './mock-adapter.ts'
+import { MockAdapter, textResponse, toolCallResponse } from './mock-adapter.ts'
 
 async function harnessWithLoop(adapter: MockAdapter = new MockAdapter([textResponse('ok')])): Promise<{ ctx: Context; loopFiber: Fiber }> {
   const ctx = new Context()
@@ -313,6 +313,74 @@ describe('agent scope lifecycle', () => {
     await Promise.all([first.dispose(), second.dispose()])
     await loopFiber.dispose()
     expect(ctx.sessionProjections.stateOf(second.agent.session, 'inbox')).toBeUndefined()
+  })
+
+  it('a cancel racing AgentLoop unload after the inbox release is a redundant no-op', async () => {
+    // E08 regression, deterministic form: Cordis fiber unload runs the inbox
+    // registration release beside the ownership disposer that drains the
+    // machine. A cancel from an outside owner (a subagent run abort landing
+    // while the machine drains) used to read the released projection and
+    // throw out of AbortController.abort(). The gated tool holds the drain
+    // open, so the cancel provably lands inside the still-pending teardown.
+    const { ctx, loopFiber } = await harnessWithLoop(new MockAdapter([toolCallResponse('call-1', 'gated', {})]))
+    onTestFinished(() => ctx.fiber.dispose())
+    const agent = await ctx.agentLoop.create(SessionId('unload-cancel-race'), { provider: 'mock', model: 'mock' })
+    const toolEntered: PromiseWithResolvers<void> = Promise.withResolvers()
+    const releaseTool: PromiseWithResolvers<void> = Promise.withResolvers()
+    agent.ctx.tools.register(defineContentToolFixture({
+      name: 'gated',
+      description: 'waits until the test releases it',
+      parameters: {},
+      execute: async () => {
+        toolEntered.resolve()
+        await releaseTool.promise
+        return text('ran')
+      },
+    }))
+    agent.followup(createUserMessage({ content: text('hang'), source: { kind: 'user' } }))
+    await toolEntered.promise
+
+    const unhandled: unknown[] = []
+    const recordUnhandled = (reason: unknown): void => { unhandled.push(reason) }
+    const late = createUserMessage({ content: text('late-while-draining'), source: { kind: 'user' } })
+    process.on('unhandledRejection', recordUnhandled)
+    try {
+      let settled = false
+      const unloading = loopFiber.dispose().finally(() => { settled = true })
+      // Gate on the release itself rather than a sleep: poll until the
+      // registration is gone, then prove the drain is still open (the tool
+      // has not been released) when the outside cancel lands.
+      await vi.waitFor(() => {
+        expect(ctx.sessionProjections.stateOf(agent.session, 'inbox')).toBeUndefined()
+      }, { interval: 1 })
+      expect(settled).toBe(false)
+      // Disposal owns the inbox from its first statement: late deliveries
+      // through every public entry reject, and none of them logs an insert.
+      expect(() => { agent.inject(late) }).toThrow(AgentDeliveryClosedError)
+      expect(() => { agent.steer(late) }).toThrow('disposal has begun')
+      expect(() => { agent.followup(late) }).toThrow('disposal has begun')
+      expect(() => { agent.inbox.append('next-step', late) }).toThrow('disposal has begun')
+      expect(() => { agent.inbox.clear() }).toThrow('disposal has begun')
+      expect(() => { agent.cancel({ kind: 'parent' }) }).not.toThrow()
+      releaseTool.resolve()
+      await unloading
+    } finally {
+      process.removeListener('unhandledRejection', recordUnhandled)
+    }
+    expect(unhandled).toEqual([])
+    // The machine stays closed after the unload completes, and the rejected
+    // delivery never reached the durable log.
+    expect(() => { agent.inject(late) }).toThrow(AgentDeliveryClosedError)
+    expect(agent.session.snapshotEvents()
+      .filter(event => event.type === 'agent/inbox/spliced')
+      .some(event => event.data.inserted.some(message => message.id === late.id))).toBe(false)
+    const turnEnd = agent.session.snapshotEvents().findLast(event => event.type === 'turn/end')
+    expect(turnEnd?.type === 'turn/end' && turnEnd.data.reason).toEqual({
+      kind: 'aborted',
+      reason: { kind: 'disposed' },
+    })
+    expect(agent.status).toBe('idle')
+    expect(ctx.agents.get(SessionId('unload-cancel-race'))).toBeUndefined()
   })
 
   it('agent.ctx listeners hear only their own agent (scoped dispatch end to end)', async () => {

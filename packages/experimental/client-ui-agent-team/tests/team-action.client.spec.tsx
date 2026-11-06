@@ -47,7 +47,7 @@ const team: TeamProjection = { members: [lead, worker], tasks: [task] }
 type Projections = SessionListState['projectionsBySession']
 
 function summary(id: SessionId, running: boolean): SessionSummary {
-  return { id, displayTitle: id, running, retainedBy: {}, blank: false, updatedAt: 0 }
+  return { id, displayTitle: id, running, retainedBy: {}, blank: false, occupied: false, updatedAt: 0 }
 }
 
 function bench(options: {

@@ -15,6 +15,7 @@ import type {
   InboxTarget,
   InboxWireState,
 } from '@deepseek-ai/dsh-agent'
+import { AgentDeliveryClosedError } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
 
 /** Wire validation for pending agent input reconstructed from durable inbox splices. */
@@ -66,17 +67,64 @@ export const inboxProjectionDefinition = {
 
 /**
  * Driver-owned durable Inbox implementation used by ReactLoopAgent and focused
- * provider tests.
+ * provider tests. The instance retains the pending lists it owns — seeded from
+ * the projection once and mirrored from every committed splice — so teardown
+ * can durably clear after the projection registration releases.
  * @param projections - registry with the standard Inbox projection registered by AgentLoop.
  * @param session - session whose durable events store pending input.
  * @param dispatch - agent-scoped notifications for Inbox lifecycle events.
  */
 export class ReactLoopInbox implements InboxContract {
+  /**
+   * The pending lists this inbox owns, seeded from the projection at
+   * construction and committed on every durable mutation. A live registration
+   * remains the read source; this mirror serves teardown after the factory's
+   * registration has released.
+   */
+  private state: InboxState
+
+  /** Set when lifecycle disposal takes over: public mutations then reject. */
+  private disposalStarted = false
+
   constructor(
     private readonly projections: SessionProjectionRegistry,
     private readonly session: Session,
     private readonly dispatch: AgentEventDispatch,
-  ) {}
+  ) {
+    const state = projections.stateOf(session, 'inbox')
+    if (state === undefined) {
+      throw new Error(
+        `agent "${session.id}" cannot read inbox state: its projection registration is not active`,
+      )
+    }
+    this.state = { 'next-turn': [...state['next-turn']], 'next-step': [...state['next-step']] }
+  }
+
+  /**
+   * Close public delivery for lifecycle teardown. Reads stay available; the
+   * disposal-owned {@link disposeClear} remains the one mutation teardown
+   * performs.
+   */
+  beginDisposal(): void {
+    this.disposalStarted = true
+  }
+
+  /** Durably cancel pending input on behalf of the disposal that owns quiescence. */
+  disposeClear(): void {
+    this.clearPending(true)
+  }
+
+  /**
+   * Park one message from the machine's own tool pipeline. This is the one
+   * delivery that outlives {@link beginDisposal}: a tool result finalized
+   * while the machine drains still settles into the pending queue instead of
+   * being lost with the aborted turn.
+   * @param target - pending list to extend.
+   * @param message - message the settled tool contributed.
+   */
+  appendInternal(target: InboxTarget, message: UserMessage): void {
+    this.mutate(target, this.current()[target].length, 0, [message], true, true)
+  }
 
   /** Prompts awaiting individual turns. */
   get nextTurn(): readonly UserMessage[] {
@@ -96,8 +144,13 @@ export class ReactLoopInbox implements InboxContract {
 
   /** Durably cancel all pending input, clearing next-step before next-turn. */
   clear(): void {
-    this.splice('next-step', 0, this.nextStep.length, [])
-    this.splice('next-turn', 0, this.nextTurn.length, [])
+    this.clearPending(false)
+  }
+
+  /** Shared clear; the disposal path runs it after public mutation has closed. */
+  private clearPending(internal: boolean): void {
+    this.mutate('next-step', 0, this.current()['next-step'].length, [], true, internal)
+    this.mutate('next-turn', 0, this.current()['next-turn'].length, [], true, internal)
   }
 
   /**
@@ -107,8 +160,8 @@ export class ReactLoopInbox implements InboxContract {
    * @returns next-step input followed by the queued turn, when requested.
    */
   claim(target: InboxTarget, turn: number): UserMessage[] {
-    const claimed = this.mutate('next-step', 0, this.nextStep.length, [], false)
-    if (target === 'next-turn') claimed.push(...this.mutate('next-turn', 0, 1, [], false))
+    const claimed = this.mutate('next-step', 0, this.nextStep.length, [], false, true)
+    if (target === 'next-turn') claimed.push(...this.mutate('next-turn', 0, 1, [], false, true))
     for (const message of claimed) this.dispatch.emit('agent/inbox/claimed', { message, turn })
     return claimed
   }
@@ -183,15 +236,20 @@ export class ReactLoopInbox implements InboxContract {
     return undefined
   }
 
-  /** Read the current durable projection state. */
-  private current(): InboxState {
-    const state = this.projections.stateOf(this.session, 'inbox')
-    if (state === undefined) {
-      throw new Error(
-        `agent "${this.session.id}" cannot read inbox state: its projection registration is not active`,
-      )
+  /** Reject deliveries that arrive after lifecycle disposal took the inbox. */
+  private assertDeliveryOpen(): void {
+    if (this.disposalStarted) {
+      throw new AgentDeliveryClosedError(this.session.id)
     }
-    return state
+  }
+
+  /** Read the current pending lists: the live projection first, else the teardown mirror. */
+  private current(): InboxState {
+    // While the registration is live it is the committed source of truth:
+    // observers of the splice event run inside append, before this mutation
+    // returns, and must read the same queue the projection already folded.
+    // The retained mirror serves teardown after that registration releases.
+    return this.projections.stateOf(this.session, 'inbox') ?? this.state
   }
 
   /** Commit one normalized mutation and publish its live events. */
@@ -201,7 +259,9 @@ export class ReactLoopInbox implements InboxContract {
     deleteCount: number,
     inserted: UserMessage[],
     discardRemoved: boolean,
+    internal = false,
   ): UserMessage[] {
+    if (!internal) this.assertDeliveryOpen()
     const state = this.current()
     const inbox = state[target]
     const truncatedStart = Math.trunc(start)
@@ -233,6 +293,12 @@ export class ReactLoopInbox implements InboxContract {
     }
     const removed = inbox.slice(actualStart, actualStart + actualDeleteCount)
     const event = this.session.append('agent/inbox/spliced', splice)
+    // Mirror the committed snapshot, not the caller's live objects: readers
+    // observe the same frozen messages a projection fold would produce.
+    const committed = inbox.toSpliced(actualStart, actualDeleteCount, ...event.data.inserted)
+    this.state = target === 'next-turn'
+      ? { 'next-turn': committed, 'next-step': state['next-step'] }
+      : { 'next-turn': state['next-turn'], 'next-step': committed }
     if (discardRemoved) {
       for (const message of removed) this.dispatch.emit('agent/inbox/discarded', { message })
     }

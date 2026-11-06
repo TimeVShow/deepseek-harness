@@ -36,7 +36,7 @@ async function bench(mock: RemoteMock, start: () => Promise<TestClient>, listed 
   mock.stream(FOLLOW, followScript(EMPTY_HISTORY))
   const feed = async (include: boolean): Promise<void> => {
     mock.remote.session.list.mockResolvedValue(ok({ items: include
-      ? [{ sessionId: ID, updatedAt: 1, running: false, blank: true, agentAvailable: true }]
+      ? [{ sessionId: ID, updatedAt: 1, running: false, blank: true, occupied: false, agentAvailable: true }]
       : [] }))
     await svc.refresh()
   }

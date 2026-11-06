@@ -242,7 +242,7 @@ describe('manager frame routing', () => {
   it('preserves a newer title when the control baseline omits it', async ({ mock, remote }) => {
     const manager = makeManager(mock, remote)
     remote.session.list.mockResolvedValue(ok({
-      items: [{ agentAvailable: true, sessionId: sid('s1'), updatedAt: 1, running: false, blank: false }],
+      items: [{ agentAvailable: true, sessionId: sid('s1'), updatedAt: 1, running: false, blank: false, occupied: false }],
     }))
     await manager.refreshList()
     manager.handleControlFrame({
@@ -264,7 +264,7 @@ describe('manager frame routing', () => {
     const manager = makeManager(mock, remote)
     remote.session.list.mockResolvedValue(ok({
       items: [{ agentAvailable: false,
-        sessionId: sid('s1'), updatedAt: 1, running: false, blank: false,
+        sessionId: sid('s1'), updatedAt: 1, running: false, blank: false, occupied: false,
         // A cold row viewed from a stale record whose own watermark outruns
         // the connected Session's cut.
         projections: { kind: 'cached', asOfSeq: 40, values: { title: 'Cached title', 'test/marks': { marks: ['cached'] } } },
@@ -296,7 +296,7 @@ describe('manager frame routing', () => {
     const manager = makeManager(mock, remote)
     remote.session.list.mockResolvedValue(ok({
       items: [{ agentAvailable: true,
-        sessionId: sid('s1'), updatedAt: 1, running: false, blank: false,
+        sessionId: sid('s1'), updatedAt: 1, running: false, blank: false, occupied: false,
         // The Host's live registry served the block: its watermark shares the connection's seq space.
         projections: { kind: 'sequenced', asOfSeq: 40, values: { title: 'Live title', 'test/marks': { marks: ['live'] } } },
       }],
@@ -328,7 +328,7 @@ describe('manager frame routing', () => {
     const manager = makeManager(mock, remote)
     remote.session.list.mockResolvedValue(ok({
       items: [{ agentAvailable: true,
-        sessionId: sid('s1'), updatedAt: 1, running: false, blank: false,
+        sessionId: sid('s1'), updatedAt: 1, running: false, blank: false, occupied: false,
         projections: {
           kind: 'sequenced',
           asOfSeq: 2,
@@ -354,7 +354,7 @@ describe('manager frame routing', () => {
   it.for([undefined, []])('drops the removed ordinary Session store with catalog %s', async (catalog, { mock, remote }) => {
     const manager = makeManager(mock, remote)
     remote.session.list.mockResolvedValue(ok({
-      items: [{ agentAvailable: true, sessionId: sid('s1'), updatedAt: 1, running: false, blank: false }],
+      items: [{ agentAvailable: true, sessionId: sid('s1'), updatedAt: 1, running: false, blank: false, occupied: false }],
     }))
     await manager.refreshList()
     manager.handleControlFrame({

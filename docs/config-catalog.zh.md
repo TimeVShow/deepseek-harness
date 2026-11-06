@@ -726,6 +726,50 @@ export interface Config {
 
 来源： [`packages/credentials/deepseek-account-platform/src/index.ts:23`](../packages/credentials/deepseek-account-platform/src/index.ts)
 
+<a id="deepseek-aidsh-experimental-agent-flow"></a>
+
+## `@deepseek-ai/dsh-experimental-agent-flow`
+
+需要： `storageDomain`
+
+```ts config-catalog
+/** Service configuration: default executor selection and count limits. */
+export interface Config {
+  /** Registry name of the executor `start` selects. */
+  executor?: string
+  /** Maximum saved flow documents. */
+  maxFlows?: number
+  /** Maximum saved agent templates. */
+  maxTemplates?: number
+  /** Maximum persisted runs; oldest settled runs are dropped beyond it. */
+  maxRuns?: number
+}
+```
+
+来源： [`packages/experimental/agent-flow/src/types.ts:150`](../packages/experimental/agent-flow/src/types.ts)
+
+<a id="deepseek-aidsh-experimental-agent-flow-runtime"></a>
+
+## `@deepseek-ai/dsh-experimental-agent-flow-runtime`
+
+需要： `agentFlows` · `subagents` · `agents` · `agentDefaultModel`
+
+```ts config-catalog
+/** Plugin configuration: registry and subagent selection with the run bounds. */
+export interface Config {
+  /** Registry name the executor registers under; must match the service's `executor` config. */
+  executor: string
+  /** Subagent provider name used for node agents. */
+  provider: string
+  /** Maximum concurrently running node agents. */
+  maxConcurrentAgents: number
+  /** Maximum turns one interactive node may take before its run fails. */
+  maxConversationTurns: number
+}
+```
+
+来源： [`packages/experimental/agent-flow-runtime/src/index.ts:16`](../packages/experimental/agent-flow-runtime/src/index.ts)
+
 <a id="deepseek-aidsh-experimental-agent-team"></a>
 
 ## `@deepseek-ai/dsh-experimental-agent-team`
@@ -4178,6 +4222,7 @@ export interface Config {
 - `@deepseek-ai/dsh-cordis-client-runner`（[`packages/extensions/cordis-client-runner/src/index.ts`](../packages/extensions/cordis-client-runner/src/index.ts)）
 - `@deepseek-ai/dsh-deepseek-llm-api-extensions`（[`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-auto-review` — 需要 `llm` · `permissionPresets` · `sessions` · `tools`（[`packages/experimental/auto-review/src/index.ts`](../packages/experimental/auto-review/src/index.ts)）
+- `@deepseek-ai/dsh-experimental-client-ui-agent-flow`（[`packages/experimental/client-ui-agent-flow/src/index.ts`](../packages/experimental/client-ui-agent-flow/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-client-ui-agent-team`（[`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-client-ui-voice-input`（[`packages/experimental/client-ui-voice-input/src/index.ts`](../packages/experimental/client-ui-voice-input/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` — requires `computerUse` · `tools` · `systemPrompt`（[`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts)）
@@ -4251,6 +4296,7 @@ export interface Config {
 - `@deepseek-ai/dsh-client-web`（[`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts)）
 - `@deepseek-ai/dsh-cmdline`（[`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts)）
 - `@deepseek-ai/dsh-deque`（[`packages/util/deque/src/index.ts`](../packages/util/deque/src/index.ts)）
+- `@deepseek-ai/dsh-experimental-agent-flow-profile`（[`packages/experimental/agent-flow-profile/src/index.ts`](../packages/experimental/agent-flow-profile/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-agent-team-profile`（[`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-browser-use-runtime`（[`packages/experimental/browser-use-runtime/src/index.ts`](../packages/experimental/browser-use-runtime/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-voice-input-bundle`（[`packages/experimental/voice-input-bundle/src/index.ts`](../packages/experimental/voice-input-bundle/src/index.ts)）

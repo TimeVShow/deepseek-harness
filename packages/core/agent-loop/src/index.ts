@@ -524,6 +524,13 @@ export class AgentLoop extends Service implements AgentFactory {
     // stop the machine, drain and close the session's write path, leave the
     // registries, unwind the scope, release bookkeeping.
     const dispose = (ownerTriggered = false): Promise<void> => (disposing ??= (async () => {
+      // Arm cancel ownership before the first await: fiber unload runs this
+      // ownership disposer beside the inbox-registration release, and a
+      // continuation scheduled behind it (a subagent run abort) would
+      // otherwise read the released inbox. machineReady below re-arms for a
+      // teardown that outran the lifecycle effect minting the machine.
+      /* v8 ignore next -- an unload before the lifecycle effect ran leaves the slot empty until machineReady resolves it */
+      if (machine !== undefined) machine.beginDisposal()
       abort.abort(new Error(`agent "${id}" lifecycle disposed`))
       callerSignal?.removeEventListener('abort', onCallerAbort)
       this.ownership.signal.removeEventListener('abort', onFactoryTeardown)
@@ -541,6 +548,12 @@ export class AgentLoop extends Service implements AgentFactory {
         if (machine === undefined) await machineReady.promise
         /* v8 ignore next -- setup failure untracks this disposer before resolving without a machine. */
         if (machine !== undefined) {
+          machine.beginDisposal()
+          // Disposal durably discards pending input even when fiber unload has
+          // already released this factory's projection registration: the inbox
+          // commits its clear from the state it retained while the Session
+          // write path is still open, so a resumed Session cannot replay input
+          // the agent never ran.
           machine.cancel({ kind: 'disposed' })
           await machine.whenIdle()
           await machine.scope.dispose()
