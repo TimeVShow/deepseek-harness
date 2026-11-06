@@ -1,0 +1,24 @@
+# Experimental Agent Flow profile layer. Apply after dsh-base: the service owns
+# flow documents, templates, and runs over base storage; the runtime interprets
+# graphs through the base subagent provider and opens a base root Session for the
+# node that talks to the user; the panel edits and starts them.
+
+- insert:
+    - id: agent-flow
+      name: '@deepseek-ai/dsh-experimental-agent-flow'
+      config:
+        executor: graph
+        maxFlows: 100
+        maxTemplates: 100
+        maxRuns: 200
+
+    - id: agent-flow-runtime
+      name: '@deepseek-ai/dsh-experimental-agent-flow-runtime'
+      config:
+        executor: graph
+        provider: spawn
+        maxConcurrentAgents: 4
+        maxConversationTurns: 16
+
+    - id: ui-agent-flow
+      name: '@deepseek-ai/dsh-experimental-client-ui-agent-flow'

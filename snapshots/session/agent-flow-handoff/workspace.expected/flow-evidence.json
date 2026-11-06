@@ -1,0 +1,54 @@
+[
+  {
+    "node": "design",
+    "iteration": 0,
+    "status": "succeeded",
+    "inputs": [],
+    "userInput": true,
+    "requestSection": true,
+    "originalRequest": true,
+    "handoffs": [],
+    "files": []
+  },
+  {
+    "node": "implement",
+    "iteration": 0,
+    "status": "succeeded",
+    "inputs": [
+      {
+        "nodeId": "design",
+        "iteration": 0
+      }
+    ],
+    "userInput": false,
+    "requestSection": false,
+    "originalRequest": false,
+    "handoffs": [
+      "design"
+    ],
+    "files": []
+  },
+  {
+    "node": "review",
+    "iteration": 0,
+    "status": "succeeded",
+    "inputs": [
+      {
+        "nodeId": "implement",
+        "iteration": 0
+      },
+      {
+        "nodeId": "design",
+        "iteration": 0
+      }
+    ],
+    "userInput": false,
+    "requestSection": false,
+    "originalRequest": false,
+    "handoffs": [
+      "design",
+      "implement"
+    ],
+    "files": []
+  }
+]

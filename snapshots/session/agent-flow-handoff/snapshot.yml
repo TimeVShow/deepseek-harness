@@ -1,0 +1,10 @@
+version: 1
+scenario: agent-flow-handoff
+profile: headless
+composition: agent-flow-handoff
+recording: authored
+header:
+  class: agent-flow-handoff
+  pin: true
+workspace:
+  final: true

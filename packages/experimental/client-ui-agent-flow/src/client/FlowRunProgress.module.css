@@ -1,0 +1,200 @@
+/* FlowRunProgress: a flow-progress card in the composer context stack, in the
+   GoalBar/Todo/Queue dock family: same dock column, card cap, and row sizes. */
+
+.dock {
+  box-sizing: border-box;
+  width: calc(
+    100% -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  margin: 0 auto;
+}
+
+.bar {
+  position: relative;
+  isolation: isolate;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  max-width: calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));
+  margin: 0 auto;
+  padding: 8px 5px 8px 12px;
+  border: 0;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  box-shadow: var(--dsw-elevation-panel);
+}
+
+.bar::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  content: '';
+  pointer-events: none;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.glyph {
+  display: inline-flex;
+  flex: none;
+}
+
+/* Matches the dock-family card titles (13/24 medium, primary). */
+.phase {
+  flex: none;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The run picker reads as part of the title line; the shared menu owns the
+   overlay, so this button is only the anchor. */
+.runPicker {
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.runPicker:hover {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.flowName {
+  flex: none;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.elapsed {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 24px;
+  color: var(--dsw-alias-label-secondary);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Node and activity rows share the 12/20 detail size of the dock family. */
+.nodeLine {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.nodeName {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary-dimmed);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The per-node entry stays on the 20px detail row instead of a 28px capsule. */
+.nodeLine .nodeOpen {
+  flex: none;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.nodeMeta {
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.activity {
+  margin: 0;
+  padding-left: 18px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notice {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+  margin: 2px 0 0;
+  padding-left: 18px;
+}
+
+.noticeLead {
+  flex: none;
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.noticeHint {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-state-error-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

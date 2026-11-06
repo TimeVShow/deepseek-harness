@@ -101,6 +101,110 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'agentFlows',
+    summary: 'Agent Flow service over one storage domain.',
+    description: 'Agent Flow service over one storage domain. Template and flow saves fail loud with every validation problem; runs persist before execution starts and settle exactly once through the registered executor.',
+    methods: [
+      {
+        signature: 'registerExecutor(executor: FlowExecutor): () => Promise<void>',
+        description: 'Register one execution engine.',
+        parameters: [{ name: 'executor', description: 'trusted same-process implementation.' }],
+        returns: 'the disposer removing the registration and settling the runs it still owns, so unloading a provider never leaves an ownerless run.',
+      },
+      {
+        signature: '@Remote(\'listTemplates\') listTemplates(): Promise<AgentTemplate[]>',
+        description: 'Read every template in display order.',
+        parameters: [],
+        returns: 'stored templates sorted by name, then id.',
+      },
+      {
+        signature: '@Remote(\'readTemplate\') readTemplate(id: AgentTemplateId): Promise<AgentTemplate>',
+        description: 'Resolve one template.',
+        parameters: [{ name: 'id', description: 'template identity.' }],
+        returns: 'the stored template.',
+      },
+      {
+        signature: '@Remote(\'saveTemplate\') async saveTemplate(draft: AgentTemplateDraft): Promise<AgentTemplate>',
+        description: 'Create or replace one template.',
+        parameters: [{ name: 'draft', description: 'template fields; an absent id creates a new identity.' }],
+        returns: 'the stored template.',
+      },
+      {
+        signature: '@Remote(\'deleteTemplate\') async deleteTemplate(id: AgentTemplateId): Promise<void>',
+        description: 'Delete one template.',
+        parameters: [{ name: 'id', description: 'template identity.' }],
+      },
+      {
+        signature: '@Remote(\'listFlows\') listFlows(): Promise<FlowDocument[]>',
+        description: 'Read every flow document in display order.',
+        parameters: [],
+        returns: 'stored documents sorted by name, then id.',
+      },
+      {
+        signature: '@Remote(\'readFlow\') readFlow(id: FlowId): Promise<FlowDocument>',
+        description: 'Resolve one flow document.',
+        parameters: [{ name: 'id', description: 'flow identity.' }],
+        returns: 'the stored document.',
+      },
+      {
+        signature: '@Remote(\'saveFlow\') async saveFlow(draft: FlowDraft): Promise<FlowDocument>',
+        description: 'Create or replace one flow document. A save validates the complete graph and every template reference, and rejects with all problems at once.',
+        parameters: [{ name: 'draft', description: 'document fields; an absent id creates a new identity.' }],
+        returns: 'the stored document.',
+      },
+      {
+        signature: '@Remote(\'deleteFlow\') async deleteFlow(id: FlowId): Promise<void>',
+        description: 'Delete one flow document. Settled run records keep their snapshots and stay readable.',
+        parameters: [{ name: 'id', description: 'flow identity.' }],
+      },
+      {
+        signature: '@Remote(\'listRuns\') async listRuns(): Promise<FlowRun[]>',
+        description: 'Read persisted runs, newest first. Retries completed outcomes whose terminal write previously failed.',
+        parameters: [],
+        returns: 'run records sorted by start time, newest first.',
+      },
+      {
+        signature: '@Remote(\'readRun\') async readRun(id: FlowRunId): Promise<FlowRun>',
+        description: 'Resolve one run record, retrying a pending terminal write before returning.',
+        parameters: [{ name: 'id', description: 'run identity.' }],
+        returns: 'the stored run.',
+      },
+      {
+        signature: 'async start(parent: Agent, request: FlowStartRequest): Promise<FlowRun>',
+        description: 'Start one run of a saved flow. The run record persists in `running` state before the registered executor begins, so every observer reads committed state. Settlement happens in the background and lands on the same record.',
+        parameters: [{ name: 'parent', description: 'live Agent under whose lineage node agents are spawned.' }, { name: 'request', description: 'flow identity, the user message, and caller cancellation.' }],
+        returns: 'the persisted running record.',
+      },
+      {
+        signature: '@Remote(\'start\') async startForClient(agent: Agent, request: FlowStartRemoteRequest, signal: AbortSignal): Promise<FlowRun>',
+        description: 'Start one run for a browser client. The Gateway resolves the invoking session\'s live Agent, which becomes the run\'s parent.',
+        parameters: [{ name: 'agent', description: 'live Agent resolved from the invoking session.' }, { name: 'request', description: 'flow identity and the user message.' }, { name: 'signal', description: 'remote cancellation for the whole run.' }],
+        returns: 'the persisted running record.',
+      },
+      {
+        signature: '@Remote(\'cancel\') async cancelForClient(agent: Agent, id: FlowRunId): Promise<void>',
+        description: 'Cancel one in-flight run for a browser client. Only the Agent of the session that started the run may cancel it.',
+        parameters: [{ name: 'agent', description: 'live Agent resolved from the invoking session.' }, { name: 'id', description: 'run identity.' }],
+      },
+      {
+        signature: 'async cancel(parent: Agent, id: FlowRunId): Promise<void>',
+        description: 'Request cancellation of one in-flight run. A run from another parent session resolves as not-found rather than revealing it. If execution has finished but its terminal write failed, retry that outcome without changing it.',
+        parameters: [{ name: 'parent', description: 'live Agent whose session started the run.' }, { name: 'id', description: 'run identity.' }],
+      },
+      {
+        signature: '@Remote(\'concludeConversation\') async concludeConversationForClient(agent: Agent, id: FlowRunId): Promise<void>',
+        description: 'End one in-flight run\'s clarification for a browser client. Only the Agent of the session that started the run may conclude it.',
+        parameters: [{ name: 'agent', description: 'live Agent resolved from the invoking session.' }, { name: 'id', description: 'run identity.' }],
+      },
+      {
+        signature: 'async concludeConversation(parent: Agent, id: FlowRunId): Promise<void>',
+        description: 'Ask the engine to end one in-flight run\'s clarification, so its conversational node stops asking and states its Result word. The run keeps executing; only the dialogue with the user ends. A run from another parent session resolves as not-found rather than revealing it.',
+        parameters: [{ name: 'parent', description: 'live Agent whose session started the run.' }, { name: 'id', description: 'run identity.' }],
+        throws: ['`agent-flow/not-conversing` when no node of the run awaits the user.'],
+      },
+    ],
+  },
+  {
     key: 'agentLoop',
     summary: 'Concrete agent factory and driver service.',
     description: 'Concrete agent factory and driver service.',
@@ -4322,6 +4426,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AgentStatus = \'idle\' | \'running\';',
   },
   {
+    name: 'AgentTemplate',
+    declaration: 'export type AgentTemplate = z.infer<typeof agentTemplateRecord>;',
+  },
+  {
+    name: 'AgentTemplateDraft',
+    declaration: 'export type AgentTemplateDraft = Omit<AgentTemplate, \'id\' | \'createdAt\' | \'updatedAt\'> & {\n    readonly id?: AgentTemplateId | undefined;\n};',
+  },
+  {
+    name: 'AgentTemplateId',
+    declaration: 'export type AgentTemplateId = Branded<\'AgentTemplateId\'>;',
+  },
+  {
     name: 'ApiKeyRecord',
     declaration: 'export interface ApiKeyRecord {\n    readonly kind: \'api-key\';\n    readonly key?: string;\n    readonly env?: Readonly<Record<string, string>>;\n}',
   },
@@ -4976,6 +5092,54 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FinishReasonMap',
     declaration: 'export interface FinishReasonMap {\n    \'stop\': {\n        kind: \'stop\';\n    };\n    \'tool-calls\': {\n        kind: \'tool-calls\';\n    };\n    \'max-tokens\': {\n        kind: \'max-tokens\';\n    };\n    \'aborted\': {\n        kind: \'aborted\';\n        failure: LlmFailure;\n    };\n    \'error\': {\n        kind: \'error\';\n        failure: LlmFailure;\n    };\n}',
+  },
+  {
+    name: 'FlowDocument',
+    declaration: 'export type FlowDocument = z.infer<typeof flowDocumentRecord>;',
+  },
+  {
+    name: 'FlowDraft',
+    declaration: 'export type FlowDraft = Omit<FlowDocument, \'id\' | \'maxIterations\' | \'createdAt\' | \'updatedAt\'> & {\n    readonly id?: FlowId | undefined;\n    readonly maxIterations?: number | undefined;\n};',
+  },
+  {
+    name: 'FlowExecutionResult',
+    declaration: 'export interface FlowExecutionResult {\n    readonly stopReason: \'completed\' | \'cancelled\' | \'failed\';\n    readonly error?: string | undefined;\n}',
+  },
+  {
+    name: 'FlowExecutor',
+    declaration: 'export interface FlowExecutor {\n    readonly name: string;\n    execute(controller: FlowRunController): Promise<FlowExecutionResult>;\n    cancel(runId: FlowRunId): void;\n    concludeConversation(runId: FlowRunId): boolean;\n}',
+  },
+  {
+    name: 'FlowId',
+    declaration: 'export type FlowId = Branded<\'FlowId\'>;',
+  },
+  {
+    name: 'FlowNodeRun',
+    declaration: 'export type FlowNodeRun = z.infer<typeof flowNodeRunRecord>;',
+  },
+  {
+    name: 'FlowNodeRunPatch',
+    declaration: 'export interface FlowNodeRunPatch {\n    status?: FlowNodeRun[\'status\'] | undefined;\n    agentSessionId?: SessionId | undefined;\n    inputs?: FlowNodeRun[\'inputs\'] | undefined;\n    userInput?: boolean | undefined;\n    dir?: string | undefined;\n    files?: string[] | undefined;\n    handoff?: string | undefined;\n    result?: string | undefined;\n    error?: string | undefined;\n    startedAt?: string | undefined;\n    endedAt?: string | undefined;\n}',
+  },
+  {
+    name: 'FlowRun',
+    declaration: 'export type FlowRun = z.infer<typeof flowRunRecord>;',
+  },
+  {
+    name: 'FlowRunController',
+    declaration: 'export interface FlowRunController {\n    readonly run: FlowRun;\n    readonly parent: Agent;\n    readonly signal: AbortSignal;\n    updateNodeRun(nodeId: string, patch: FlowNodeRunPatch): Promise<FlowRun>;\n    startNodeIteration(nodeId: string): Promise<FlowRun>;\n}',
+  },
+  {
+    name: 'FlowRunId',
+    declaration: 'export type FlowRunId = Branded<\'FlowRunId\'>;',
+  },
+  {
+    name: 'FlowStartRemoteRequest',
+    declaration: 'export interface FlowStartRemoteRequest {\n    readonly flowId: FlowId;\n    readonly input: string;\n}',
+  },
+  {
+    name: 'FlowStartRequest',
+    declaration: 'export interface FlowStartRequest {\n    readonly flowId: FlowId;\n    readonly input: string;\n    readonly signal: AbortSignal;\n}',
   },
   {
     name: 'FsDirEntry',

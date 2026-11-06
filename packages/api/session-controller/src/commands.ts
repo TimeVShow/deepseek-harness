@@ -52,6 +52,7 @@ import type {
   SessionUpdateQueueValue,
   SessionRequestId,
 } from './types.ts'
+import { sessionUsageOf } from './usage.ts'
 
 interface SessionReadState {
   readonly id: SessionId
@@ -97,7 +98,10 @@ export class SessionCommandController {
   ) {}
 
   /**
-   * Create or idempotently adopt one ordinary Session.
+   * Create or idempotently adopt one ordinary Session. Adopting a named
+   * Session is refused with `session/occupied` when a session-usage provider
+   * reports durable plugin usage under that identity, because such a Session
+   * is history to return to, not a blank to claim.
    * @param request - requested identity, location, and Agent preset.
    * @returns the Session identity and resolved preset when configured.
    */
@@ -106,6 +110,13 @@ export class SessionCommandController {
       throw new RemoteError('gateway/bad-request', 'session.create accepts workspaceId or cwd, not both', {})
     }
     const sessionId = request.sessionId ?? brandString<SessionId>(`session-${randomUUID()}`)
+    if (request.sessionId !== undefined && sessionUsageOf(this.ctx)?.isOccupied(sessionId) === true) {
+      throw new RemoteError(
+        'session/occupied',
+        `session "${sessionId}" carries recorded plugin usage and cannot be adopted as a new blank Session`,
+        { sessionId },
+      )
+    }
     let workspace: Workspace | undefined
     if (request.workspaceId !== undefined) {
       workspace = this.ctx.workspaceRegistry.get(request.workspaceId)

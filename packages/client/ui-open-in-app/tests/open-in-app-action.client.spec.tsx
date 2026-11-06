@@ -31,7 +31,7 @@ function bench(over: {
 } = {}): Bench {
   const state: SessionListState = {
     ids: [SESSION],
-    byId: over.cwd === undefined ? {} : { [SESSION]: { id: SESSION, displayTitle: 'Workspace', cwd: over.cwd, running: false, retainedBy: {}, blank: false, updatedAt: 0 } },
+    byId: over.cwd === undefined ? {} : { [SESSION]: { id: SESSION, displayTitle: 'Workspace', cwd: over.cwd, running: false, retainedBy: {}, blank: false, occupied: false, updatedAt: 0 } },
     phase: 'ready',
     projectionsBySession: {},
   }

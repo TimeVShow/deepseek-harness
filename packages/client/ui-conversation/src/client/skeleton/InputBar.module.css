@@ -42,6 +42,29 @@
   line-height: 18px;
 }
 
+/* A claimed command's standing warning: the claim is valid, but submitting it
+   will not do what the draft suggests (an unconnected Agent Flow request). */
+.claimWarning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--dsh-composer-card-max-width);
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dsw-alias-state-warning-primary, var(--dsw-alias-state-business-primary)) 12%, transparent);
+  color: var(--dsw-alias-state-warning-primary, var(--dsw-alias-state-business-primary));
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.claimWarning > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
 .card {
   box-sizing: border-box;
   position: relative; /* overlay anchor positioning context */

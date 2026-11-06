@@ -860,7 +860,10 @@ export function WorkspaceBrowser({
   const workspaceReady = workspacePhase === 'ready' && workspaceStreamState !== 'loading'
   const mainSessionId = Object.values(list.byId)
     .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
-  const currentBlank = mainSessionId !== undefined && list.byId[mainSessionId]?.blank === true
+  const mainSession = mainSessionId === undefined ? undefined : list.byId[mainSessionId]
+  // Only a provisional placeholder is pinned as the New Session slot; an
+  // occupied blank Session is ordinary history.
+  const currentBlank = mainSession !== undefined && mainSession.blank && !mainSession.occupied
     ? mainSessionId
     : undefined
   const ungroupedMemberIds = useMemo(() => {

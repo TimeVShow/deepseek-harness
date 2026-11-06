@@ -42,6 +42,8 @@ describe('highlightToHtml', () => {
     'xml', 'lua',
   ]
 
+  /* Loading every read-card grammar is module-I/O bound and exceeds the default
+     budget on a cold transform cache; the assertions themselves are instant. */
   it('lazily loads every read-card grammar: plain first, highlighted after load', async () => {
     const registered = Promise.withResolvers<undefined>()
     // Registration notifications, not a private polling deadline, establish readiness.
@@ -55,7 +57,7 @@ describe('highlightToHtml', () => {
     } finally {
       stop()
     }
-  })
+  }, 30_000)
 })
 
 describe('CodeBlock', () => {

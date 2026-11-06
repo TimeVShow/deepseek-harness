@@ -45,6 +45,12 @@ export interface SessionSummary {
    * browser shows only the selected blank entry.
    */
   blank: boolean
+  /**
+   * Durable plugin usage (for example an orchestration run) occupies this
+   * Session beyond its turn history. The row stays present and returnable;
+   * New Session must not claim it as its blank starting point.
+   */
+  occupied: boolean
   updatedAt: number
   /** Current host-computed projection values retained by the object layer. */
   projectionValues?: Readonly<Partial<SessionProjectionMap>>
@@ -619,6 +625,7 @@ export class ClientSessions implements ISessions {
         running: entry.running,
         retainedBy: this.retentionSnapshot(entry.sessionId).retainedBy,
         blank: entry.blank,
+        occupied: entry.occupied,
         updatedAt: entry.updatedAt,
         ...(entry.projectionValues === undefined
           ? {}
@@ -640,7 +647,7 @@ export class ClientSessions implements ISessions {
         if (summary === undefined) {
           byId[childId] = {
             id: childId, displayTitle, parentId: parentId as SessionId,
-            origin: 'subagent', running: this.scopes.get(childId)?.session.getSnapshot().running ?? false, blank: false, updatedAt: 0,
+            origin: 'subagent', running: this.scopes.get(childId)?.session.getSnapshot().running ?? false, blank: false, occupied: false, updatedAt: 0,
             retainedBy: this.retentionSnapshot(childId).retainedBy,
             ...(projectionValues === undefined ? {} : { projectionValues }),
             ...(title === undefined ? {} : { title }),
@@ -668,6 +675,7 @@ export class ClientSessions implements ISessions {
         running: snapshot.running,
         retainedBy: record.retention.retainedBy,
         blank: snapshot.blank,
+        occupied: previous?.occupied ?? false,
         parentId: address.parentSessionId,
         origin: 'subagent',
         ...(projectionValues === undefined ? {} : { projectionValues }),

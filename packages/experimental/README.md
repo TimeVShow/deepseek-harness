@@ -29,8 +29,12 @@ The experimental group contains prototype capabilities whose contracts can chang
 | [`api-speech-to-text`](api-speech-to-text/README.md) | Authenticated transient transcription Remote | `ctx.speechController` |
 | [`client-ui-voice-input`](client-ui-voice-input/README.md) | Microphone capture and guarded draft insertion | — |
 | [`voice-input-bundle`](voice-input-bundle/README.md) | Default-disabled optional voice input composition | — |
+| [`agent-flow-profile`](agent-flow-profile/README.md) | Fixed multi-agent workflows: documents, graph runtime, and Web canvas bundle | — |
 | [`agent-team-profile`](agent-team-profile/README.md) | Agent Teams collaboration, tools, and Web UI bundle | — |
 | [`agent-team`](agent-team/README.md) | Named teammates with durable messages and a shared task board | `ctx.agentTeams` |
+| [`agent-flow`](agent-flow/README.md) | Agent templates, validated flow-graph documents, and persisted runs | `ctx.agentFlows` |
+| [`agent-flow-runtime`](agent-flow-runtime/README.md) | Graph interpreter running flow documents through a subagent provider | — |
+| [`client-ui-agent-flow`](client-ui-agent-flow/README.md) | Flow canvas, agent template forms, and run control for Web | — |
 | [`client-ui-agent-team`](client-ui-agent-team/README.md) | Team roster, task board, and teammate navigation for Web | — |
 | [`auto-review`](auto-review/README.md) | Explicit Web layer for same-model review before each native or PTC inner tool call | — |
 | [`ptc-runtime-python`](ptc-runtime-python/README.md) | CPython subprocess backend for the PTC execution seam | `ctx.ptcRuntime` |
@@ -54,6 +58,7 @@ The experimental group contains prototype capabilities whose contracts can chang
 - [Computer use](../../docs/subsystems/computer-use.md) — desktop provider choices.
 - [Browser use](../../docs/subsystems/browser-use.md) — browser provider choices and Session ownership.
 - [Agent Teams subsystem](../../docs/subsystems/agent-team.md) — durable Team types and the `ctx.agentTeams` service API.
+- [Agent Flow subsystem](../../docs/subsystems/agent-flow.md) — durable flow types and the `ctx.agentFlows` service API.
 - [Experimental subtree rules](AGENTS.md) — what experimental status does and does not relax.
 
 -----

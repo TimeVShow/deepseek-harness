@@ -48,6 +48,9 @@ describe('release families', () => {
     expect(members
       .filter(member => member.directory.startsWith('packages/experimental/'))
       .map(member => member.name)).toEqual([
+      '@deepseek-ai/dsh-experimental-agent-flow-profile',
+      '@deepseek-ai/dsh-experimental-agent-flow-runtime',
+      '@deepseek-ai/dsh-experimental-agent-flow',
       '@deepseek-ai/dsh-experimental-agent-team-profile',
       '@deepseek-ai/dsh-experimental-agent-team',
       '@deepseek-ai/dsh-experimental-api-speech-to-text',
@@ -56,6 +59,7 @@ describe('release families', () => {
       '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp',
       '@deepseek-ai/dsh-experimental-browser-use-runtime',
       '@deepseek-ai/dsh-experimental-browser-use-stagehand-native',
+      '@deepseek-ai/dsh-experimental-client-ui-agent-flow',
       '@deepseek-ai/dsh-experimental-client-ui-agent-team',
       '@deepseek-ai/dsh-experimental-client-ui-voice-input',
       '@deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp',

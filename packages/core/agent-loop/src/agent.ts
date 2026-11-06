@@ -117,6 +117,8 @@ export class ReactLoopAgent implements Agent {
   private readonly systemPrompt: SystemPromptProjection
   /** Identities fully frozen by this loop; weak references do not retain replaced history. */
   private readonly frozenMessages = new WeakSet<Message>()
+  /** Set the moment lifecycle disposal takes over this machine's quiescence. */
+  private disposalStarted = false
 
   constructor(
     private loopCtx: Context,
@@ -171,7 +173,21 @@ export class ReactLoopAgent implements Agent {
     this.send(input, 'next-step', false)
   }
 
+  /**
+   * Transfer cancellation ownership to lifecycle disposal. From this point the
+   * memoized teardown owns this machine's quiescence: its own disposed-cause
+   * cancel clears the inbox and aborts the phase, so an external cancel racing
+   * the teardown (for example a subagent run abort landing while the machine
+   * drains under Host teardown) is a redundant no-op instead of an inbox read
+   * the teardown may no longer serve.
+   */
+  beginDisposal(): void {
+    this.disposalStarted = true
+    if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
+  }
+
   cancel(cause: AgentCancelCause, options: CancelOptions = {}): void {
+    if (this.disposalStarted && cause.kind !== 'disposed') return
     if (!options.keepInbox) {
       this.inbox.clear()
       if (this.phase.kind !== 'idle') this.phase.wakeRequested = false

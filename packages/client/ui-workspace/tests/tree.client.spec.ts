@@ -17,7 +17,7 @@ import { createWorkspaceViewStore } from '../src/client/stores.ts'
 const sid = (id: string) => id as SessionId
 const wid = (id: string) => id as WorkspaceId
 const summary = (id: string, updatedAt: number, cwd?: string): SessionSummary => ({
-  id: sid(id), displayTitle: id, running: false, blank: false,
+  id: sid(id), displayTitle: id, running: false, blank: false, occupied: false,
   updatedAt, ...(cwd === undefined ? {} : { cwd }), retainedBy: {},
 })
 const list = (...items: SessionSummary[]): SessionListState => ({
@@ -306,6 +306,45 @@ describe('deriveGroups', () => {
       [workspace('first', [])], noRows, noAttention, view(),
     )
     expect(strayGroups.map(group => group.key)).toEqual(['first'])
+  })
+
+  it('keeps an occupied blank parent in history beside the selected new session', () => {
+    const occupiedParent = { ...summary('flow-parent', 1), blank: true, occupied: true }
+    const fresh = { ...summary('new-session', 2), blank: true, retainedBy: { mainView: 1 } }
+    const groups = deriveGroups(
+      list(occupiedParent, fresh), [workspace('first', ['flow-parent', 'new-session'])],
+      noRows, noAttention, view(['first']),
+    )
+    expect(groups[0]!.sessions.map(row => row.id)).toEqual([sid('new-session'), sid('flow-parent')])
+    expect(groups[0]!.sessions.find(row => row.id === occupiedParent.id)).toMatchObject({
+      title: 'flow-parent',
+      blank: false,
+    })
+  })
+
+  it('renders a selected occupied parent as history, not a new-session placeholder', () => {
+    const occupiedParent = { ...summary('flow-parent', 1), blank: true, occupied: true, retainedBy: { mainView: 1 } }
+    const groups = deriveGroups(
+      list(occupiedParent), [workspace('first', ['flow-parent'])], noRows, noAttention, view(['first']),
+    )
+    expect(groups[0]?.sessions[0]).toMatchObject({ title: 'flow-parent', blank: false })
+  })
+
+  it('treats occupied blanks as ordinary members in flat lists, counts, and search', () => {
+    const occupiedParent = { ...summary('flow-parent', 1), blank: true, occupied: true }
+    const staleBlank = { ...summary('stale-blank', 2), blank: true }
+    const real = summary('real', 3)
+    const sessions = list(occupiedParent, staleBlank, real)
+    const workspaces = [workspace('first', ['flow-parent', 'stale-blank', 'real'])]
+    expect(sessionMemberIds(sessions)).toEqual([sid('flow-parent'), sid('real')])
+    expect(visibleSessionIds(sessions, noArchive, 'default')).toEqual([sid('flow-parent'), sid('real')])
+    const flatRows = deriveFlat(sessions, visibleSessionIds(sessions, noArchive, 'default'), noRows, noAttention)
+    expect(flatRows.map(row => [row.id, row.blank])).toEqual([[sid('flow-parent'), false], [sid('real'), false]])
+    expect(deriveGroups(sessions, workspaces, noRows, noAttention, view(['first']))[0]!.sessionCount).toBe(2)
+    const search = deriveSearchResults(
+      sessions, workspaces, 'flow', noArchive, 'default', noAttention, { items: [], hasMore: false }, 10,
+    )
+    expect(search.items.map(item => item.id)).toEqual([sid('flow-parent')])
   })
 
   it('projects the completion reminder into session and search rows (absent = false)', () => {

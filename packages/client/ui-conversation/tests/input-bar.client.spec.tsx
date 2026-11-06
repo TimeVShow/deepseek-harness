@@ -1394,6 +1394,51 @@ describe('decorations', () => {
     expect(textarea.style.getPropertyValue('--dsh-composer-hint')).toBe(JSON.stringify('输入目标，智能体将持续执行'))
   })
 
+  it('keeps a claim standing warning visible in both pick orders, with typed arguments, and while submitting', async () => {
+    const warning = 'This flow receives no run input'
+    const token = 'flow:demo '
+    let release!: () => void
+    const settled = new Promise<void>((resolve) => { release = resolve })
+    const claimOf = () => ({
+      name: 'agent-flow/flow-1',
+      token,
+      hint: 'Type the run input',
+      warning,
+      submit: async () => { await settled; return { kind: 'success' as const } },
+    })
+    /* Pick then type: the claim lands on an empty draft and the message follows. */
+    const first = bench()
+    act(() => {
+      first.shell.beginCommand(claimOf(), { start: 0, end: 0, draftRev: first.shell.snapshot.draftRev })
+      first.shell.setDraft(`${token}design a sorter`)
+    })
+    expect(first.view.queryByText(warning)).not.toBeNull()
+    expect(first.textarea.style.getPropertyValue('--dsh-composer-hint')).toBe('')
+    cleanup()
+
+    /* Type then pick: the token replaces the empty leading span of a draft the
+       user already wrote. */
+    const second = bench({ draft: 'design a sorter' })
+    act(() => {
+      expect(second.shell.beginCommand(claimOf(), { start: 0, end: 0, draftRev: second.shell.snapshot.draftRev })).toBe(true)
+    })
+    expect(second.shell.snapshot.draft).toBe(`${token}design a sorter`)
+    expect(second.view.queryByText(warning)).not.toBeNull()
+
+    /* The ghost hint still owns the empty argument line only. */
+    act(() => { second.shell.setDraft(token) })
+    expect(second.textarea.style.getPropertyValue('--dsh-composer-hint')).toBe(JSON.stringify('Type the run input'))
+    expect(second.view.queryByText(warning)).not.toBeNull()
+
+    /* Submitting keeps the claim, so the warning stays on screen. */
+    act(() => { second.shell.setDraft(`${token}design a sorter`) })
+    act(() => { second.shell.submit() })
+    expect(second.shell.snapshot.phase).toBe('submitting')
+    expect(second.view.queryByText(warning)).not.toBeNull()
+    release()
+    await act(async () => {})
+  })
+
   it('suppresses placeholders throughout native composition, including a temporarily empty draft', async () => {
     const { shell, textarea, view } = bench()
     expect(view.container.querySelector('[data-composer-placeholder]')).not.toBeNull()

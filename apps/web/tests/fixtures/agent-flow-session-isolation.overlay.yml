@@ -1,0 +1,8 @@
+# Session-isolation lane: the real agent-flow service with a deterministic
+# executor, so an occupied parent Session reaches New Session navigation the
+# way a completed orchestration run leaves it — without any model call.
+- insert:
+    - id: agent-flow
+      name: '@deepseek-ai/dsh-experimental-agent-flow'
+    - id: agent-flow-deterministic
+      name: ./agent-flow-deterministic.js

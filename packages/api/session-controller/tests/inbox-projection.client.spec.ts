@@ -63,7 +63,7 @@ describe('Inbox projection intake', () => {
       const empty = { 'next-turn': [], 'next-step': [] }
       const stale = { ...empty, 'next-turn': [message('removed', 'already removed')] }
       const result = ok({ items: [{
-        sessionId: SID, updatedAt: 1, running: false, blank: false, agentAvailable: false,
+        sessionId: SID, updatedAt: 1, running: false, blank: false, occupied: false, agentAvailable: false,
         // The Session is attached: the Host's live registry served the block.
         projections: { kind: 'sequenced' as const, asOfSeq: 21, values: { inbox: empty } },
       }] })
@@ -109,9 +109,9 @@ describe('Inbox projection intake', () => {
       const face = manager.get(SID).projections.faceOf('inbox')
       const baseline = { type: 'baseline', value: { projections: {} } } as const
       const result = ok({ items: [
-        { sessionId: SID, updatedAt: 1, running: false, blank: false, agentAvailable: false,
+        { sessionId: SID, updatedAt: 1, running: false, blank: false, occupied: false, agentAvailable: false,
           projections: { kind: 'cached' as const, asOfSeq: 1, values: { inbox: empty } } },
-        { sessionId: hiddenSessionId, updatedAt: 1, running: false, blank: false, agentAvailable: false,
+        { sessionId: hiddenSessionId, updatedAt: 1, running: false, blank: false, occupied: false, agentAvailable: false,
           projections: { kind: 'cached' as const, asOfSeq: 1, values: { inbox: restored } } },
       ] })
       let refreshed: Promise<void> | undefined

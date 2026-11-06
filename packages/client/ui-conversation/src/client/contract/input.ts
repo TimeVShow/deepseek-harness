@@ -41,6 +41,13 @@ export interface CommandClaim {
   /** Inserted command text with its argument separator; the bare complete name also retains the claim. */
   readonly token: string
   readonly hint?: string
+  /**
+   * Standing warning about what submitting this claim does, shown for as long
+   * as the claim holds whatever the argument text. Unlike `hint`, which is
+   * ghost text occupying the empty argument line, this stays visible beside a
+   * filled draft and during submission.
+   */
+  readonly warning?: string
   readonly attachments?: boolean
   /**
    * Submit the claimed command.
@@ -261,7 +268,13 @@ export interface InputState {
   readonly draftRev: number
   readonly phase: 'plain' | 'adjudicating' | 'claimed' | 'submitting'
   /** Present exactly while claimed/submitting (claim snapshot during flight; submit closure withheld). */
-  readonly claim?: { readonly name: string; readonly token: string; readonly hint?: string; readonly attachments?: boolean }
+  readonly claim?: {
+    readonly name: string
+    readonly token: string
+    readonly hint?: string
+    readonly warning?: string
+    readonly attachments?: boolean
+  }
   /** Reference occurrence view of the editor's chips, sorted by offset. */
   readonly occurrences: readonly Occurrence[]
   /** Messages still waiting for their own turn. */

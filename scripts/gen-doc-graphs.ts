@@ -720,6 +720,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns the implicit-root roster, durable peer mailbox, shared task DAG, and continuable-child lifecycle; tool-agent-team contributes model controls.',
   },
   {
+    key: 'agentFlows',
+    pkg: 'experimental-agent-flow',
+    title: 'Fixed multi-agent workflow documents',
+    mode: 'core',
+    consumers: ['experimental-agent-flow-runtime'],
+    note: 'Owns agent templates, validated flow-graph documents, and persisted runs over one storage domain; the runtime interprets a document through the subagent seam and the Web panel edits and starts runs.',
+  },
+  {
     key: 'inspector',
     pkg: 'inspector',
     title: 'Cross-realm runtime inspection',

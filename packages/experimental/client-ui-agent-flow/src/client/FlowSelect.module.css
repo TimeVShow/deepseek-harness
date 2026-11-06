@@ -1,0 +1,81 @@
+.trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 220px;
+  height: 28px;
+  padding: 0 4px 0 8px;
+  border: none;
+  /* Rounded chip chrome, matching the sibling permission trigger. */
+  border-radius: 24px;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.trigger:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+}
+
+.trigger:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  cursor: default;
+}
+
+.triggerIcon {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+/* The shared 16px glyphs render one step smaller on the exposed trigger;
+   the dropdown rows keep the full 16px. */
+.triggerIcon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The in-flight dot hangs off the icon's top-right corner. */
+.triggerIcon .live {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+}
+
+.triggerLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  /* inline-flex, not inline: an inline seat reserves baseline descent under
+     the svg and floats the glyph off-center in the 28px trigger. */
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-caption);
+  transition: transform 120ms ease;
+}
+
+/* Narrow composer: the trigger collapses to icon + chevron so the row keeps
+   fitting. The 460px cut matches the sibling permission trigger. */
+@container (max-width: 460px) {
+  .trigger .triggerLabel {
+    display: none;
+  }
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}

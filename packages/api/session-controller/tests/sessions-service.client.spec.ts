@@ -59,6 +59,7 @@ type FeedRow = {
   origin?: 'subagent'
   running?: boolean
   blank?: boolean
+  occupied?: boolean
   projections?: import('../src/types.ts').SessionProjectionValues
 }
 
@@ -66,6 +67,7 @@ async function feedList(b: Bench, rows: FeedRow[]): Promise<void> {
   b.mock.remote.session.list.mockResolvedValue(ok({
     items: rows.map(r => ({ agentAvailable: true,
       sessionId: sid(r.id), updatedAt: 1, running: r.running ?? false, blank: r.blank ?? false,
+      occupied: r.occupied ?? false,
       ...(r.cwd !== undefined ? { cwd: r.cwd } : {}),
       ...(r.parentId !== undefined ? { parentSessionId: sid(r.parentId) } : {}),
       ...(r.origin !== undefined ? { origin: r.origin } : {}),
@@ -114,7 +116,7 @@ describe('list store projection', () => {
     const b = bench()
     await feedList(b, [{ id: 's1' }])
     b.svc.handleSessionAdded({ agentAvailable: true,
-      sessionId: sid('s2'), updatedAt: 2, running: false, blank: true,
+      sessionId: sid('s2'), updatedAt: 2, running: false, blank: true, occupied: false,
     })
     await Promise.resolve()
     expect(b.svc.list.getSnapshot().ids).toContain('s2')
@@ -533,7 +535,7 @@ describe('Agent scope disposal lifecycle', () => {
     const readiness = b.ctx.plugin(() => undefined)
     await readiness
     b.svc.handleSessionAdded({ agentAvailable: true,
-      sessionId: sid('live'), updatedAt: 1, running: false, blank: true,
+      sessionId: sid('live'), updatedAt: 1, running: false, blank: true, occupied: false,
     })
     await Promise.resolve()
     using reference = b.svc.retainAgentScope(sid('live'))
@@ -995,7 +997,7 @@ describe('fork', () => {
 describe('catalog arrival', () => {
   it('keeps a retained binding alive without a catalog row after Host removal', async ({ bench }) => {
     const b = bench()
-    b.svc.handleSessionAdded({ agentAvailable: true, sessionId: sid('s-new'), updatedAt: 1, running: false, blank: true })
+    b.svc.handleSessionAdded({ agentAvailable: true, sessionId: sid('s-new'), updatedAt: 1, running: false, blank: true, occupied: false })
     await Promise.resolve()
     expect(b.svc.binding(sid('s-new'))).toBeUndefined()
     const reference = b.svc.retain(sid('s-new'), { source: 'controllerOperation' })
@@ -1067,13 +1069,29 @@ describe('blank mirror', () => {
     const b = bench()
     await feedList(b, [])
     b.svc.handleSessionAdded({ agentAvailable: true,
-      sessionId: sid('s-new'), updatedAt: 2, running: false, blank: true, cwd: '/w/a',
+      sessionId: sid('s-new'), updatedAt: 2, running: false, blank: true, occupied: false, cwd: '/w/a',
     })
     await Promise.resolve()
     expect(b.svc.list.getSnapshot().byId[sid('s-new')]).toMatchObject({ blank: true })
     // Reconnect re-pull: the summary's blank=false wins (authoritative alignment).
     await feedList(b, [{ id: 's-new', blank: false, cwd: '/w/a' }])
     expect(b.svc.list.getSnapshot().byId[sid('s-new')]).toMatchObject({ blank: false })
+  })
+
+  it('applies Host-pushed occupation to an existing row in both directions', async ({ bench }) => {
+    const b = bench()
+    await feedList(b, [{ id: 's1', blank: true, occupied: false, cwd: '/w/a' }])
+    b.svc.handleSessionAdded({ agentAvailable: true,
+      sessionId: sid('s1'), updatedAt: 2, running: false, blank: true, occupied: true, cwd: '/w/a',
+    })
+    await Promise.resolve()
+    expect(b.svc.list.getSnapshot().byId[sid('s1')]).toMatchObject({ blank: true, occupied: true })
+    // The Host remains authoritative when the provider stops answering.
+    b.svc.handleSessionAdded({ agentAvailable: true,
+      sessionId: sid('s1'), updatedAt: 3, running: false, blank: true, occupied: false, cwd: '/w/a',
+    })
+    await Promise.resolve()
+    expect(b.svc.list.getSnapshot().byId[sid('s1')]).toMatchObject({ blank: true, occupied: false })
   })
 
   it('never re-blanks: a stale blank=true summary cannot hide an engaged session', async ({ bench }) => {

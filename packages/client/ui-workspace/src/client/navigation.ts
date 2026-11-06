@@ -176,23 +176,44 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     return attempt
   }
 
-  private reuseOrCreateBlank(workspace: WorkspaceView): Promise<SessionId> {
+  private async reuseOrCreateBlank(workspace: WorkspaceView): Promise<SessionId> {
     const archived = this.workspaces.list.getSnapshot().archivedSessionIds
     const sessions = this.sessions.list.getSnapshot()
     for (const id of sessions.ids) {
       const summary = sessions.byId[id]
-      if (summary === undefined || !summary.blank || summary.cwd !== workspace.path
+      if (summary === undefined || !summary.blank || summary.occupied || summary.cwd !== workspace.path
         || !workspace.sessionIds.includes(id) || archived.includes(id)) continue
-      return this.reuseBlank(workspace.workspaceId, id)
+      try {
+        return await this.sessions.create({ workspaceId: workspace.workspaceId, sessionId: id })
+      } catch (error: unknown) {
+        const code = sessionCreateErrorOf(error)?.rpcError.code
+        if (code !== 'session/writer-held' && code !== 'session/occupied') throw error
+        // A writer-held candidate cannot be opened at all, so a fresh identity
+        // is the only safe target.
+        if (code === 'session/writer-held') break
+        // Occupied: the listed summary predates the Host's usage record, so
+        // the next candidate decides, exactly like a candidate never listed.
+      }
     }
     return this.sessions.create({ workspaceId: workspace.workspaceId })
   }
 
+  /**
+   * Re-adopt one specific saved blank Session. A Host `session/occupied`
+   * refusal means the Session carries durable plugin usage — the caller opens
+   * it as history rather than replacing it; a writer-held refusal still falls
+   * back to a fresh identity.
+   * @param workspaceId - target Workspace.
+   * @param sessionId - saved Session to re-adopt.
+   * @returns the re-adopted identity, the same id when occupied, or a fresh one.
+   */
   private async reuseBlank(workspaceId: WorkspaceId, sessionId: SessionId): Promise<SessionId> {
     try {
       return await this.sessions.create({ workspaceId, sessionId })
     } catch (error: unknown) {
-      if (sessionCreateErrorOf(error)?.rpcError.code !== 'session/writer-held') throw error
+      const code = sessionCreateErrorOf(error)?.rpcError.code
+      if (code === 'session/occupied') return sessionId
+      if (code !== 'session/writer-held') throw error
       return this.sessions.create({ workspaceId })
     }
   }
@@ -324,7 +345,8 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const summary = saved.sessionId === undefined ? undefined : sessions.byId[saved.sessionId]
     const workspace = summary === undefined ? undefined
       : workspaces.items.find(item => item.sessionIds.includes(summary.id))
-    if (summary !== undefined && (!summary.blank || workspace === undefined)) {
+    // An occupied Session is its own history: open it, never reclaim it as the blank.
+    if (summary !== undefined && (!summary.blank || summary.occupied || workspace === undefined)) {
       this.replaceMain(summary.id, this.lifetime.signal, 'preserve')
       return
     }

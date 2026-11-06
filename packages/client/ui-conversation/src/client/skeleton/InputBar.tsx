@@ -338,6 +338,10 @@ export const InputBar = memo(function InputBar({
     const translated = (t as Translate)(hintKey)
     return translated !== hintKey ? translated : rawHint
   })()
+  // A claim's standing warning outlives the ghost hint: it states what the
+  // submission will do, so it stays beside typed arguments and while the
+  // claim is being submitted.
+  const claimWarning = claimActive && input.claim.warning !== undefined ? input.claim.warning : null
 
   const placeholderText = placeholder ?? (parentOffline
     ? t('placeholder.parentOffline')
@@ -364,6 +368,12 @@ export const InputBar = memo(function InputBar({
       {notice?.level === 'info' && (
         <div className={css.notice} role="status">
           {notice.text}
+        </div>
+      )}
+      {claimWarning !== null && (
+        <div className={css.claimWarning} role="status">
+          <IconWarningOutlineRegular size={14} aria-hidden="true" />
+          <span>{claimWarning}</span>
         </div>
       )}
       {/* Trigger clicks land on the card, not the editor: the toolbar row's

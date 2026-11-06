@@ -59,7 +59,7 @@ function props(
     ids: [CHILD],
     byId: summaries ?? {
       ...Object.fromEntries(Object.values(catalogs).flatMap(catalog => catalog.entries.map(entry => [entry.id, {
-        id: entry.id, displayTitle: entry.label ?? entry.id, running: entry.activity === 'running', blank: false, updatedAt: 1, retainedBy: {},
+        id: entry.id, displayTitle: entry.label ?? entry.id, running: entry.activity === 'running', blank: false, occupied: false, updatedAt: 1, retainedBy: {},
       }]))),
       [CHILD]: {
         id: CHILD,
@@ -68,6 +68,7 @@ function props(
         running: Object.values(catalogs).some(catalog => catalog.entries.some(entry => entry.id === CHILD && entry.activity === 'running')),
         retainedBy: {},
         blank: false,
+        occupied: false,
         updatedAt: Date.now(),
       },
     },
@@ -127,6 +128,7 @@ function summary(id: SessionId, updatedAt: number): SessionSummary {
     running: false,
     retainedBy: {},
     blank: false,
+    occupied: false,
     updatedAt,
   }
 }

@@ -1,0 +1,10 @@
+# Authored fixed-graph scenario; application launch remains the shipped headless profile.
+- insert:
+    - id: agent-flow
+      name: '@deepseek-ai/dsh-experimental-agent-flow'
+    - id: agent-flow-runtime
+      name: '@deepseek-ai/dsh-experimental-agent-flow-runtime'
+      config:
+        maxConcurrentAgents: 1
+    - id: snapshot-agent-flow
+      name: '../../../packages/experimental/agent-flow-runtime/tests/fixtures/headless-flow.ts'

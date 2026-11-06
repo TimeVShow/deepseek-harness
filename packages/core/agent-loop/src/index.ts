@@ -524,6 +524,13 @@ export class AgentLoop extends Service implements AgentFactory {
     // stop the machine, drain and close the session's write path, leave the
     // registries, unwind the scope, release bookkeeping.
     const dispose = (ownerTriggered = false): Promise<void> => (disposing ??= (async () => {
+      // Arm cancel ownership before the first await: fiber unload runs this
+      // ownership disposer beside the inbox-registration release, and a
+      // continuation scheduled behind it (a subagent run abort) would
+      // otherwise read the released inbox. machineReady below re-arms for a
+      // teardown that outran the lifecycle effect minting the machine.
+      /* v8 ignore next -- an unload before the lifecycle effect ran leaves the slot empty until machineReady resolves it */
+      if (machine !== undefined) machine.beginDisposal()
       abort.abort(new Error(`agent "${id}" lifecycle disposed`))
       callerSignal?.removeEventListener('abort', onCallerAbort)
       this.ownership.signal.removeEventListener('abort', onFactoryTeardown)
@@ -541,7 +548,14 @@ export class AgentLoop extends Service implements AgentFactory {
         if (machine === undefined) await machineReady.promise
         /* v8 ignore next -- setup failure untracks this disposer before resolving without a machine. */
         if (machine !== undefined) {
-          machine.cancel({ kind: 'disposed' })
+          machine.beginDisposal()
+          // Fiber unload releases this factory's projection registration in
+          // parallel with this teardown, so the inbox may already be
+          // unreadable here. The session is leaving with the machine, so no
+          // reader can observe the skipped durable clear — the phase must
+          // still abort and the machine still drain.
+          const inboxRegistered = this.runtime.ctx.sessionProjections.stateOf(session, 'inbox') !== undefined
+          machine.cancel({ kind: 'disposed' }, inboxRegistered ? {} : { keepInbox: true })
           await machine.whenIdle()
           await machine.scope.dispose()
         }

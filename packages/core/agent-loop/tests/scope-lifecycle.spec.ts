@@ -315,6 +315,51 @@ describe('agent scope lifecycle', () => {
     expect(ctx.sessionProjections.stateOf(second.agent.session, 'inbox')).toBeUndefined()
   })
 
+  it('a cancel racing AgentLoop unload after the inbox release is a redundant no-op', async () => {
+    // E08 regression, deterministic form: Cordis fiber unload runs the inbox
+    // registration release beside the ownership disposer that drains the
+    // machine. A cancel from an outside owner (a subagent run abort landing
+    // while the machine drains) used to read the released projection and
+    // throw out of AbortController.abort(). Disposal owns quiescence from its
+    // first statement: the outside cancel is a no-op, and the disposed-cause
+    // cancel still aborts and drains the hanging turn.
+    const { ctx, loopFiber } = await harnessWithLoop(new MockAdapter(['hang-slow']))
+    onTestFinished(() => ctx.fiber.dispose())
+    const agent = await ctx.agentLoop.create(SessionId('unload-cancel-race'), { provider: 'mock', model: 'mock' })
+    const turnOpen = new Promise<void>((resolve) => {
+      const off = ctx.on('session/event', (_s, event) => {
+        if (event.type === 'turn/start') { off(); resolve() }
+      })
+    })
+    agent.followup(createUserMessage({ content: text('hang'), source: { kind: 'user' } }))
+    await turnOpen
+
+    const unhandled: unknown[] = []
+    const recordUnhandled = (reason: unknown): void => { unhandled.push(reason) }
+    process.on('unhandledRejection', recordUnhandled)
+    try {
+      const unloading = loopFiber.dispose()
+      // The unload wave releases the registration and arms the disposal guard
+      // inside its own microtasks; hang-slow keeps the model request alive
+      // for 50ms after the disposed cancel, so this lands in the
+      // still-pending drain.
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(ctx.sessionProjections.stateOf(agent.session, 'inbox')).toBeUndefined()
+      expect(() => agent.cancel({ kind: 'parent' })).not.toThrow()
+      await unloading
+    } finally {
+      process.removeListener('unhandledRejection', recordUnhandled)
+    }
+    expect(unhandled).toEqual([])
+    const turnEnd = agent.session.snapshotEvents().findLast(event => event.type === 'turn/end')
+    expect(turnEnd?.type === 'turn/end' && turnEnd.data.reason).toEqual({
+      kind: 'aborted',
+      reason: { kind: 'disposed' },
+    })
+    expect(agent.status).toBe('idle')
+    expect(ctx.agents.get(SessionId('unload-cancel-race'))).toBeUndefined()
+  })
+
   it('agent.ctx listeners hear only their own agent (scoped dispatch end to end)', async () => {
     const ctx = await harness(new MockAdapter([textResponse('one'), textResponse('two')]))
     const a = await ctx.agentLoop.create(SessionId('a'), { provider: 'mock', model: 'mock' })
