@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-11-08-agent-flow-entry-input-default.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-11-08-agent-flow-entry-input-default.md
+/agent-note-agent-flow-entry-nodes-read-the-run-request-by-default:
+  en: 2e1074322317827e
+  zh: 9d473b9a73429d6f
+/agent-note-agent-flow-entry-nodes-read-the-run-request-by-default/problem:
+  en: 88922299795e1cff
+  zh: f0645ea4c0cf88ce
+/agent-note-agent-flow-entry-nodes-read-the-run-request-by-default/decision:
+  en: e785ed14c6f92adb
+  zh: 52a6b4f600759908
+/agent-note-agent-flow-entry-nodes-read-the-run-request-by-default/verification:
+  en: 8f04ffb347e2751d
+  zh: f95fb23709addbc5
+/agent-note-agent-flow-entry-nodes-read-the-run-request-by-default/alternatives-considered:
+  en: b16682e1b1633f5e
+  zh: e41573d33048953e
+/agent-note-agent-flow-entry-nodes-read-the-run-request-by-default/consequences:
+  en: 00246542a2452908
+  zh: 5fb6f80b28a11e5b

@@ -2,7 +2,7 @@
 
 English | [中文](agent-flow.zh.md)
 
-Types shared by the experimental fixed-workflow domain, its graph execution provider, and Web adapters. The [Agent Flow Agent Note](../../.agents/notes/implemented/architecture/2026-09-24-agent-flow-plugin-seams.md) owns the seam decisions; this page records the durable and client-visible forms from [`packages/experimental/agent-flow/src/types.ts`](../../packages/experimental/agent-flow/src/types.ts) and [`src/spec.ts`](../../packages/experimental/agent-flow/src/spec.ts).
+Types shared by the experimental fixed-workflow domain, its graph execution provider, and Web adapters. The [Agent Flow Agent Note](../../.agents/notes/implemented/architecture/2026-09-24-agent-flow-plugin-seams.md) owns the seam decisions; this page records the durable and client-visible forms from [`packages/experimental/agent-flow/src/types.ts`](../../packages/experimental/agent-flow/src/types.ts) and [`src/spec.ts`](../../packages/experimental/agent-flow/src/spec.ts). The [entry input default note](../../.agents/notes/implemented/architecture/2026-11-08-agent-flow-entry-input-default.md) owns the entry request rule.
 
 ## Identity
 
@@ -14,7 +14,7 @@ One template names a reusable agent definition: an optional `persona` and option
 
 ## Flow documents
 
-A document declares `start`, `agent`, `condition`, `join`, and `end` nodes with unique ids matching `^[A-Za-z0-9_-]+$`. An agent node is a task performed by a template-defined role. Every edge has a required `kind`: `execution` advances work and hands off source results; `input` adds an existing result reference without scheduling either endpoint. Start execution carries no user request; a start input edge explicitly adds the original request. Input targets must be agent nodes, and their sources must be guaranteed available on that execution path. One optional interactive task may be the single entry and opens a root Session for human replies; its opening turn logs runtime rules with source `agent-flow` and, when a start input edge is wired, the original request as a user message.
+A document declares `start`, `agent`, `condition`, `join`, and `end` nodes with unique ids matching `^[A-Za-z0-9_-]+$`. An agent node is a task performed by a template-defined role. Every edge has a required `kind`: `execution` advances work and hands off source results; `input` adds an existing result reference without scheduling either endpoint. A Start execution successor (an entry node) receives the run's original request by default; a start input edge adds it to any other node. Input targets must be agent nodes, and their sources must be guaranteed available on that execution path. One optional interactive task may be the single entry and opens a root Session for human replies; its opening turn logs runtime rules with source `agent-flow` and the original request as a user message.
 
 A condition reads the final `Result: <word>` from its single agent predecessor and selects exactly one execution edge with the matching word. It transparently forwards that task result; an all join merges effective branch results. Ordinary tasks also wait for all effective execution predecessors without requiring an explicit join. Unselected branches do not block a merge, while failed or cancelled work stops the run. A task outputs only its own final explanation and artifact references; upstream inputs are not inherited transitively. A separate input edge adds a required earlier result, and absence fails before model work starts.
 
@@ -28,9 +28,9 @@ Save-time validation analyzes the complete execution graph and accepts parallel 
 
 | Case | Save | Executions | Task receives | Unselected branches | Terminal | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Linear `start→A→B→end` | accepted | `A@0`, `B@0` | B: `A@0` | — | completed | `runs a linear pipeline with file handoffs...` |
-| Explicit request, start execution plus `start⇢A` input | accepted | `A@0` | A: original request, no task result | — | completed | `reads an explicitly connected request without letting the input line schedule work` |
-| Ancestor input `A→B→C` plus `A⇢C` | accepted | `A@0`, `B@0`, `C@0` | C: `B@0`, `A@0` | — | completed | `does not inject the original request or transitive task results`; `hands the selected branch through an all join...` |
+| Linear `start→A→B→end` | accepted | `A@0`, `B@0` | A: original request; B: `A@0` | — | completed | `runs a linear pipeline with file handoffs...` |
+| Default entry request, start execution (no input line needed) | accepted | `A@0` | A: original request, no task result | — | completed | `injects the original request into the entry node only` |
+| Ancestor input `A→B→C` plus `A⇢C` | accepted | `A@0`, `B@0`, `C@0` | A: original request; C: `B@0`, `A@0` | — | completed | `injects the original request into the entry node only`; `hands the selected branch through an all join...` |
 | Ordinary multi-predecessor all `A,B→C` | accepted | `A@0`, `B@0`, `C@0` | C: `A@0`, `B@0` once | — | completed | `waits for all direct execution predecessors...` |
 | Explicit all `A,B→J→C` | accepted | `A@0`, `B@0`, `J@0`, `C@0` | C: `A@0`, `B@0` | — | completed | `passes all branch results through an explicit join` |
 | Condition `A→cond→{left,right}` | accepted | A, cond, selected branch | selected branch: `A@0` forwarded by cond | unchosen branch skipped | completed | `routes on the Result line through a condition node...` |
@@ -54,7 +54,7 @@ The runtime reads and writes the Host filesystem shared by the run's parent Sess
 
 ## Runs
 
-A run binds its document snapshot, parent Session, and original request. Each `nodeRuns` entry identifies one node execution with an incrementing `iteration`, its status, final `handoff`, artifact `files`, routing `result`, and navigation Session id. `inputs` records the exact source task executions, and `userInput` records whether the original request was explicitly connected. The run settles to `completed`, `cancelled`, or `failed`; completion requires a successful end and all effective work to settle, and an interactive exit commits only after the executor cancels its remaining runtime-owned turns and their tool work reaches quiescence. A completed terminal write also closes every node left pending by a failed skip write. Interrupted ownerless runs become failed on service activation without replaying work. Terminal-write failures retain their owned result for reconciliation. Oldest settled runs drop beyond `maxRuns`.
+A run binds its document snapshot, parent Session, and original request. Each `nodeRuns` entry identifies one node execution with an incrementing `iteration`, its status, final `handoff`, artifact `files`, routing `result`, and navigation Session id. `inputs` records the exact source task executions, and `userInput` records whether the run's original request reaches that task (entry default or explicit input edge). The run settles to `completed`, `cancelled`, or `failed`; completion requires a successful end and all effective work to settle, and an interactive exit commits only after the executor cancels its remaining runtime-owned turns and their tool work reaches quiescence. A completed terminal write also closes every node left pending by a failed skip write. Interrupted ownerless runs become failed on service activation without replaying work. Terminal-write failures retain their owned result for reconciliation. Oldest settled runs drop beyond `maxRuns`.
 
 ## Executor seam
 

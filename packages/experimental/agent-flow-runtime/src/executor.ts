@@ -492,9 +492,17 @@ class GraphRun {
     })
   }
 
-  /** Whether the user explicitly connected the run request to this task. */
+  /** Whether this task reads the run request: entry nodes by default, else an explicit input edge. */
   private readsUserInput(nodeId: string): boolean {
-    return this.document.edges.some(edge => edge.kind === 'input' && edge.to === nodeId && this.nodeAt(edge.from).kind === START_KIND)
+    return this.isEntryNode(nodeId)
+      || this.document.edges.some(edge => edge.kind === 'input' && edge.to === nodeId && this.nodeAt(edge.from).kind === START_KIND)
+  }
+
+  /** Whether the Start node executes this task directly, making it a flow entry. */
+  private isEntryNode(nodeId: string): boolean {
+    const start = this.document.nodes.find(node => node.kind === START_KIND)
+    if (start === undefined) return false
+    return this.document.edges.some(edge => edge.kind === 'execution' && edge.from === start.id && edge.to === nodeId)
   }
 
   /** Resolve required references before starting any model or tool work. */

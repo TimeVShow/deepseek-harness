@@ -13,7 +13,7 @@ import type {
 } from '@deepseek-ai/dsh-experimental-agent-flow/types'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
-import { canSetEdgeKind, isRoutableEdge, missingInteractiveRequest, setEdgeKind } from './graph.ts'
+import { canSetEdgeKind, isRoutableEdge, setEdgeKind } from './graph.ts'
 import type { CanvasSelection } from './Canvas.tsx'
 import type { NS } from './locales.ts'
 import styles from './AgentFlowPage.module.css'
@@ -190,9 +190,6 @@ export function Inspector({
             <span>{t('inspect.interactive')}</span>
           </label>
           <p className={styles.hint}>{t('inspect.interactiveHint')}</p>
-          {node.interactive === true && missingInteractiveRequest(document)
-            ? <p className={styles.warning}>{t('inspect.interactiveNoRequest')}</p>
-            : null}
           <h3 className={styles.formTitle}>{t('inspect.inputs')}</h3>
           <p className={styles.hint}>{t('inspect.inputsHint')}</p>
           <InputSummary document={document} nodeId={node.id} templates={templates} t={t} />

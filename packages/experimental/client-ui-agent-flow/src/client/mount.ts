@@ -42,7 +42,6 @@ import { NodeActivityTracker } from './activity-tracker.ts'
 import { FlowRunProgress } from './FlowRunProgress.tsx'
 import { beginFlowClaim, createFlowClaim } from './flow-claim.ts'
 import { FlowSelect } from './FlowSelect.tsx'
-import { missingInteractiveRequest } from './graph.ts'
 import { AgentFlowController, type AgentFlowView, type FlowLockReason } from './controller.ts'
 import { en, NS, zh } from './locales.ts'
 import type { OpenFileOptions } from './RunResults.tsx'
@@ -305,7 +304,6 @@ function registerUi(ctx: ClientContext, options: FlowPanelOptions): void {
         const claim = createFlowClaim(sessionId, flow, {
           token: candidate => t('selector.token', { name: candidate.name }),
           hint: t('selector.hint'),
-          ...missingInteractiveRequest(flow) ? { warning: t('selector.requestNotConnected') } : {},
           emptyInput: t('selector.emptyInput'),
           startFailed: message => t('error.start', { message }),
         }, {

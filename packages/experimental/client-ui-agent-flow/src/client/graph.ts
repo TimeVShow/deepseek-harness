@@ -67,20 +67,6 @@ export function autoLayout(document: FlowDocument): Map<string, Point> {
 }
 
 /**
- * Whether one flow's conversational entry is missing the explicit start input
- * edge that would deliver the run's original request.
- * @param document - flow being edited.
- * @returns true when an interactive agent exists and no start input reaches it.
- */
-export function missingInteractiveRequest(document: FlowDocument): boolean {
-  const interactive = document.nodes.find(node => node.kind === 'agent' && node.interactive === true)
-  if (interactive === undefined) return false
-  const start = document.nodes.find(node => node.kind === 'start')
-  if (start === undefined) return false
-  return !document.edges.some(edge => edge.kind === 'input' && edge.from === start.id && edge.to === interactive.id)
-}
-
-/**
  * Pick an unused node id of the given kind.
  * @param document - document whose ids must stay unique.
  * @param kind - node kind naming the id prefix.

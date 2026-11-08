@@ -331,7 +331,9 @@ describe('generated Remote chain', () => {
     expect(prompts[0]).toContain('work one')
     expect(prompts[1]).toContain('work two')
     expect(prompts[1]).toContain('## Handoff from task1\nfirst')
-    for (const prompt of prompts) expect(prompt).not.toContain('write the changelog')
+    // The entry task reads the run request by default; its successor does not.
+    expect(prompts[0]).toContain('## User request\nwrite the changelog')
+    expect(prompts[1]).not.toContain('write the changelog')
 
     await chain.controller.load()
     expect(chain.controller.state.getSnapshot().runs[0]).toMatchObject({ status: 'completed' })
@@ -384,7 +386,7 @@ describe('generated Remote chain', () => {
     reloaded.dispose()
   })
 
-  it('opens a conversation that reads no run input without inventing a human message', async () => {
+  it('opens an entry conversation with the run request by default', async () => {
     const chain = await bootChain({
       flow: 'interactive',
       input: false,
@@ -394,8 +396,9 @@ describe('generated Remote chain', () => {
 
     const settled = await waitRun(chain, 'completed')
     expect(settled.nodeRuns.find(entry => entry.nodeId === 'talk')?.status).toBe('succeeded')
-    expect(chain.sessionSources()).toEqual(['agent-flow'])
-    expect(chain.modelPrompts()[0]).not.toContain('this message is not wired')
+    // Even without an explicit input edge, the Start successor receives the request.
+    expect(chain.sessionSources()).toEqual(['agent-flow', 'user'])
+    expect(chain.modelPrompts()[0]).toContain('this message is not wired')
   })
 
   it('surfaces a worker failure on the run record and client state', async () => {

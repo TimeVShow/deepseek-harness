@@ -500,43 +500,6 @@ describe('Agent Flow browser plugin', () => {
     }
   })
 
-  it('warns through the claim when the conversational entry reads no run input', async () => {
-    const { ctx, scopeCtx } = await bench()
-    const fiber = ctx.plugin({ inject: [...inject], apply })
-    await fiber.await()
-    const entry = ctx.slots.entries('conversation.input.left').find(candidate => candidate.options.id === PANEL_ID)
-    const face = entry?.inject?.(SESSION as never)
-    if (face === undefined) throw new Error('the selector inject face is missing')
-    const claims: CommandClaim[] = []
-    scopeCtx.on('slash/input-begin-command', (request) => { claims.push(request.claim); return true })
-
-    const dialogue = (input: boolean): FlowDocument => ({
-      id: flowDocument.id,
-      name: 'dialogue',
-      maxIterations: 16,
-      nodes: [
-        { kind: 'start', id: 'start' },
-        { kind: 'agent', id: 'talk', templateId: TEMPLATE, instruction: 'ask', interactive: true },
-        { kind: 'end', id: 'end' },
-      ],
-      edges: [
-        { kind: 'execution', from: 'start', to: 'talk' },
-        ...input ? [{ kind: 'input' as const, from: 'start', to: 'talk' }] : [],
-        { kind: 'execution', from: 'talk', to: 'end' },
-      ],
-      createdAt: 'a',
-      updatedAt: 'a',
-    })
-
-    const claimFlow = member(face, 'claimFlow')
-    claimFlow(dialogue(true), { start: 0, end: 0, draftRev: 1 })
-    /* A wired request needs no warning; an unwired one states it up front. */
-    expect(claims[0]?.hint).toBe(en['selector.hint'])
-    claimFlow(dialogue(false), { start: 0, end: 0, draftRev: 1 })
-    expect(claims[1]?.hint).toContain(en['selector.requestNotConnected'])
-    await ctx.fiber.dispose()
-  })
-
   it('follows a started run into its conversational node', async () => {
     const { ctx, scopeCtx, uiWorkspace } = await bench({ conversational: true })
     const fiber = ctx.plugin({ inject: [...inject], apply })
@@ -582,46 +545,6 @@ describe('Agent Flow browser plugin', () => {
     const outcome = await claims[0]!.submit('fix the bug', scopeCtx, [])
     expect(outcome.kind).toBe('error')
     if (outcome.kind === 'error') expect(outcome.text).toContain('refused')
-    await ctx.fiber.dispose()
-  })
-
-  it('warns on the claim of a conversational flow that reads no run input', async () => {
-    const { ctx, scopeCtx } = await bench()
-    const fiber = ctx.plugin({ inject: [...inject], apply })
-    await fiber.await()
-    const entry = ctx.slots.entries('conversation.input.left').find(candidate => candidate.options.id === PANEL_ID)
-    const face = entry?.inject?.(SESSION as never)
-    if (face === undefined) throw new Error('the selector inject face is missing')
-    const claims: CommandClaim[] = []
-    scopeCtx.on('slash/input-begin-command', (request) => {
-      claims.push(request.claim)
-      return true
-    })
-    const conversational: FlowDocument = {
-      ...flowDocument,
-      nodes: [
-        { kind: 'start', id: 'start' },
-        { kind: 'agent', id: 'clarify', templateId: TEMPLATE, instruction: 'ask', interactive: true },
-        { kind: 'end', id: 'end' },
-      ],
-      edges: [{ kind: 'execution', from: 'start', to: 'clarify' }, { kind: 'execution', from: 'clarify', to: 'end' }],
-    }
-    member(face, 'claimFlow')(conversational, { start: 0, end: 0, draftRev: 1 })
-    const unconnected = claims[0]!
-    /* The warning is standing copy of its own; the ghost hint stays the
-       neutral "type the run input" line. */
-    expect([zh['selector.requestNotConnected'], en['selector.requestNotConnected']]
-      .some(warning => unconnected.hint?.includes(warning))).toBe(true)
-    expect(unconnected.hint?.includes(en['selector.hint']) || unconnected.hint?.includes(zh['selector.hint'])).toBe(true)
-    /* A fixed-instruction flow stays legal: it still starts with the input. */
-    expect((await unconnected.submit('keep going', scopeCtx, [])).kind).toBe('success')
-
-    const wired: FlowDocument = {
-      ...conversational,
-      edges: [...conversational.edges, { kind: 'input', from: 'start', to: 'clarify' }],
-    }
-    member(face, 'claimFlow')(wired, { start: 0, end: 0, draftRev: 1 })
-    expect(claims[1]!.hint).toBe(en['selector.hint'])
     await ctx.fiber.dispose()
   })
 

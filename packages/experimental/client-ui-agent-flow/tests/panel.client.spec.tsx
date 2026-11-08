@@ -290,20 +290,6 @@ describe('Agent Flow panel', () => {
     expect(face.createFlow).toHaveBeenCalledWith(replacement.id)
   })
 
-  it('warns when the conversation entry has no request input', () => {
-    const { props, store } = bench()
-    render(<AgentFlowPage {...props} />)
-    fireEvent.click(screen.getByText('demo'))
-    act(() => {
-      store.update((current) => {
-        const node = current.draft?.nodes.find(candidate => candidate.id === 'agent1')
-        if (node?.kind === 'agent') node.interactive = true
-      })
-    })
-    fireEvent.click(screen.getByTestId('click-node'))
-    expect(screen.getByText(/receives no run input/)).toBeDefined()
-  })
-
   it('edits an agent', () => {
     const { props, face, store } = bench()
     store.update((current) => { current.view = 'agents' })

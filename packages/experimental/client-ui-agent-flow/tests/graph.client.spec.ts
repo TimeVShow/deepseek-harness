@@ -9,7 +9,6 @@ import {
   connectNodes,
   edgeKey,
   isRoutableEdge,
-  missingInteractiveRequest,
   nextNodeId,
   removeEdge,
   removeNode,
@@ -236,28 +235,6 @@ describe('flow canvas mapping', () => {
     expect(connectNodes(flow, 'end', 'step')).toBe(false)
     flow.edges.push({ kind: 'execution', from: 'missing', to: 'step' })
     expect(canSetEdgeKind(flow, 4, 'input')).toBe(false)
-  })
-})
-
-describe('request wiring', () => {
-  it('flags a conversation entry that receives no original request', () => {
-    const value = document()
-    const step = value.nodes.find(node => node.id === 'step')
-    if (step?.kind === 'agent') step.interactive = true
-    expect(missingInteractiveRequest(value)).toBe(true)
-    value.edges.push({ kind: 'input', from: 'start', to: 'step' })
-    expect(missingInteractiveRequest(value)).toBe(false)
-    value.nodes = value.nodes.map(node => node.id === 'step' && node.kind === 'agent' ? { ...node, interactive: false } : node)
-    expect(missingInteractiveRequest(value)).toBe(false)
-  })
-
-  it('reports no missing request when the document carries no start node', () => {
-    const value = document()
-    const step = value.nodes.find(node => node.id === 'step')
-    if (step?.kind === 'agent') step.interactive = true
-    value.nodes = value.nodes.filter(node => node.kind !== 'start')
-    value.edges = value.edges.filter(edge => edge.from !== 'start')
-    expect(missingInteractiveRequest(value)).toBe(false)
   })
 })
 

@@ -2,7 +2,7 @@
 
 [English](agent-flow.md) | 中文
 
-实验性固定工作流领域、其图执行 provider 与 Web 适配器共享的类型。[Agent Flow Agent Note](../../.agents/notes/implemented/architecture/2026-09-24-agent-flow-plugin-seams.zh.md) 拥有接缝决策；本页记录来自 [`packages/experimental/agent-flow/src/types.ts`](../../packages/experimental/agent-flow/src/types.ts) 与 [`src/spec.ts`](../../packages/experimental/agent-flow/src/spec.ts) 的持久与客户端可见形态。
+实验性固定工作流领域、其图执行 provider 与 Web 适配器共享的类型。[Agent Flow Agent Note](../../.agents/notes/implemented/architecture/2026-09-24-agent-flow-plugin-seams.zh.md) 拥有接缝决策；本页记录来自 [`packages/experimental/agent-flow/src/types.ts`](../../packages/experimental/agent-flow/src/types.ts) 与 [`src/spec.ts`](../../packages/experimental/agent-flow/src/spec.ts) 的持久与客户端可见形态。 [入口默认输入记录](../../.agents/notes/implemented/architecture/2026-11-08-agent-flow-entry-input-default.zh.md)拥有入口请求规则。
 
 ## Identity
 
@@ -14,7 +14,7 @@
 
 ## Flow documents
 
-文档声明 `start`、`agent`、`condition`、`join` 与 `end` 节点，唯一 id 匹配 `^[A-Za-z0-9_-]+$`。agent 节点表示由模板定义的角色执行的任务。每条边都有必填 `kind`：`execution` 推进工作并交接来源结果；`input` 补充已有结果引用，不调度任何端点。start 执行边不携带用户请求；start 输入边才显式加入原始请求。输入目标必须是 agent 节点，且来源在该执行路径上保证可用。一个可选的交互任务可以作为唯一入口，并打开供人类回复的 root 会话；它的开场轮次把运行时规则记录为 `agent-flow` 上下文，若接了 start 输入边，原始请求作为用户消息单独记录。
+文档声明 `start`、`agent`、`condition`、`join` 与 `end` 节点，唯一 id 匹配 `^[A-Za-z0-9_-]+$`。agent 节点表示由模板定义的角色执行的任务。每条边都有必填 `kind`：`execution` 推进工作并交接来源结果；`input` 补充已有结果引用，不调度任何端点。start 的直接执行后继（入口节点）默认接收本轮原始请求；start 输入边可把请求加入其他节点。输入目标必须是 agent 节点，且来源在该执行路径上保证可用。一个可选的交互任务可以作为唯一入口，并打开供人类回复的 root 会话；它的开场轮次把运行时规则记录为 `agent-flow` 上下文，并把原始请求作为用户消息单独记录。
 
 条件节点读取唯一 agent 前驱最终的 `Result: <词>`，恰好选择路由词匹配的一条执行边。它透明转交该任务结果；all 汇合合并有效分支结果。普通任务也等待全部有效执行前驱，无需显式汇合节点。未选分支不阻塞汇合；失败或取消的工作会停止运行。任务只输出自己的最终说明与产物引用，不传递式继承上游输入。单独的输入边补充必需的先前结果；缺失时在模型工作开始前失败。
 
@@ -28,9 +28,9 @@
 
 | 案例 | 保存 | 执行 | 任务收到 | 未选分支 | 终态 | 证据 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 线性 `start→A→B→end` | 接受 | `A@0`、`B@0` | B：`A@0` | — | completed | `runs a linear pipeline with file handoffs...` |
-| 显式请求：start 执行边加 `start⇢A` 输入 | 接受 | `A@0` | A：原始请求，无任务结果 | — | completed | `reads an explicitly connected request without letting the input line schedule work` |
-| 祖先输入 `A→B→C` 加 `A⇢C` | 接受 | `A@0`、`B@0`、`C@0` | C：`B@0`、`A@0` | — | completed | `does not inject the original request or transitive task results`；`hands the selected branch through an all join...` |
+| 线性 `start→A→B→end` | 接受 | `A@0`、`B@0` | A：原始请求；B：`A@0` | — | completed | `runs a linear pipeline with file handoffs...` |
+| 默认入口请求：仅 start 执行边（无需输入线） | 接受 | `A@0` | A：原始请求，无任务结果 | — | completed | `injects the original request into the entry node only` |
+| 祖先输入 `A→B→C` 加 `A⇢C` | 接受 | `A@0`、`B@0`、`C@0` | A：原始请求；C：`B@0`、`A@0` | — | completed | `injects the original request into the entry node only`；`hands the selected branch through an all join...` |
 | 普通多前驱 all `A,B→C` | 接受 | `A@0`、`B@0`、`C@0` | C：`A@0`、`B@0` 各一次 | — | completed | `waits for all direct execution predecessors...` |
 | 显式 all `A,B→J→C` | 接受 | `A@0`、`B@0`、`J@0`、`C@0` | C：`A@0`、`B@0` | — | completed | `passes all branch results through an explicit join` |
 | 条件 `A→cond→{left,right}` | 接受 | A、cond、被选分支 | 被选分支：cond 转发的 `A@0` | 未选分支 skipped | completed | `routes on the Result line through a condition node...` |
@@ -54,7 +54,7 @@
 
 ## Runs
 
-运行绑定其文档快照、父 Session 与原始请求。每个 `nodeRuns` 条目以递增 `iteration` 标识一次节点执行，记录状态、最终 `handoff`、产物 `files`、路由 `result` 与导航 Session id。`inputs` 记录确切的来源任务执行，`userInput` 记录原始请求是否被显式连接。运行结算为 `completed`、`cancelled` 或 `failed`；完成要求成功到达结束节点且全部有效工作已结算，交互节点的退出只会在执行器取消其剩余的运行时自有轮次、且工具工作静止后提交。completed 的终态写入还会关闭因跳过写入失败而残留 pending 的节点。服务激活时把失去所有者的中断运行标为失败，不重做工作。终态写入失败会保留所属结果供对账。超出 `maxRuns` 时删除最早结算的运行。
+运行绑定其文档快照、父 Session 与原始请求。每个 `nodeRuns` 条目以递增 `iteration` 标识一次节点执行，记录状态、最终 `handoff`、产物 `files`、路由 `result` 与导航 Session id。`inputs` 记录确切的来源任务执行，`userInput` 记录本轮原始请求是否到达该任务（入口默认或显式输入边）。运行结算为 `completed`、`cancelled` 或 `failed`；完成要求成功到达结束节点且全部有效工作已结算，交互节点的退出只会在执行器取消其剩余的运行时自有轮次、且工具工作静止后提交。completed 的终态写入还会关闭因跳过写入失败而残留 pending 的节点。服务激活时把失去所有者的中断运行标为失败，不重做工作。终态写入失败会保留所属结果供对账。超出 `maxRuns` 时删除最早结算的运行。
 
 ## Executor seam
 

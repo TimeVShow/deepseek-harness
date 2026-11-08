@@ -564,8 +564,9 @@ describe('Agent Flow graph runtime', () => {
     await waitForNode(service, run.id, 'a1', 'conversing')
 
     await service.concludeConversation(harness.parent, run.id)
-    expect(root.prompts).toHaveLength(2)
-    expect(root.prompts[1]).toContain('The user ended the clarification')
+    expect(root.prompts).toHaveLength(3)
+    expect(root.prompts[1]).toContain('go')
+    expect(root.prompts[2]).toContain('The user ended the clarification')
     /* The request is consumed, so a repeat reports no open conversation. */
     await expect(service.concludeConversation(harness.parent, run.id))
       .rejects.toMatchObject({ code: 'agent-flow/not-conversing' })
@@ -813,7 +814,7 @@ describe('Agent Flow graph runtime', () => {
     expect(settled.nodeRuns.every(entry => !['pending', 'running', 'conversing'].includes(entry.status))).toBe(true)
   })
 
-  it('does not inject the original request or transitive task results', async () => {
+  it('injects the original request into the entry node only', async () => {
     const harness = await setup({ scripts: { a1: { text: 'design' }, a2: { text: 'implementation' }, review: { text: 'approved' } } })
     const flow = await seed(harness.service, templateId => ({
       nodes: [start(), agent('a1', templateId, 'design'), agent('a2', templateId, 'implement'), agent('review', templateId, 'review'), end()],
@@ -826,10 +827,13 @@ describe('Agent Flow graph runtime', () => {
     }))
     const run = await startRun(harness, flow, 'raw request must stay private')
     const settled = await waitForSettled(harness.service, run.id, 'completed')
-    for (const request of harness.stub.requests) expect(promptText(request)).not.toContain('## User request')
+    // The Start successor reads the run request by default; later nodes do not.
+    expect(promptText(harness.stub.requests[0]!)).toContain('## User request\nraw request must stay private')
+    for (const request of harness.stub.requests.slice(1)) expect(promptText(request)).not.toContain('## User request')
     const review = promptText(harness.stub.requests[2]!)
     expect(review).toContain('## Handoff from a2\nimplementation')
     expect(review).not.toContain('## Handoff from a1')
+    expect(settled.nodeRuns.find(entry => entry.nodeId === 'a1')?.userInput).toBe(true)
     expect(settled.nodeRuns.find(entry => entry.nodeId === 'review')?.inputs).toEqual([{ nodeId: 'a2', iteration: 0 }])
   })
 

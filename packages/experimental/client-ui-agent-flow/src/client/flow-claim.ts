@@ -19,12 +19,6 @@ export interface FlowClaimCopy {
   /** The visible token for one selected flow, before its trailing space. */
   token(flow: FlowDocument): string
   hint: string
-  /**
-   * Standing warning for a flow that will not receive the message this claim
-   * submits; the claim hint prepends it because the host claim has no separate
-   * warning field. Absent when the flow reads the run input.
-   */
-  warning?: string
   emptyInput: string
   startFailed(message: string): string
 }
@@ -52,7 +46,7 @@ export function createFlowClaim(
   return {
     name: `${FLOW_CLAIM_PREFIX}${String(flow.id)}`,
     token: `${copy.token(flow)} `,
-    hint: copy.warning === undefined ? copy.hint : `${copy.warning}\n${copy.hint}`,
+    hint: copy.hint,
     submit: async (args): Promise<SubmitOutcome> => {
       const input = args.trim()
       if (input === '') return { kind: 'error', text: copy.emptyInput }
