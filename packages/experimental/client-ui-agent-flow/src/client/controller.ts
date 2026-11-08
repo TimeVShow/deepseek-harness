@@ -14,7 +14,6 @@ import type { NodeObservation } from './activity-tracker.ts'
 import type {
   AgentTemplate,
   AgentTemplateDraft,
-  AgentTemplateId,
   FlowDraft,
   FlowDocument,
   FlowId,
@@ -350,18 +349,16 @@ export class AgentFlowController {
   }
 
   /**
-   * Create one starter flow: an explicitly chosen entry agent wired between
-   * start and end. With no saved templates, it creates a neutral starter agent.
-   * @param templateId - entry role; required whenever templates already exist.
+   * Create one starter flow with a neutral entry agent wired between start and
+   * end. The entry role and graph are chosen in the canvas afterward; a shared
+   * Starter template is created only when none exists.
    */
-  async createFlow(templateId?: AgentTemplateId): Promise<void> {
+  async createFlow(): Promise<void> {
     const templates = this.state.getSnapshot().templates
-    let template = templateId === undefined ? undefined : templates.find(candidate => candidate.id === templateId)
-    if (templateId !== undefined && template === undefined) throw new Error(`unknown entry agent template: ${templateId}`)
-    if (templateId === undefined && templates.length === 0) {
+    let template = templates.find(candidate => candidate.name === 'Starter agent')
+    if (template === undefined) {
       template = await this.saveTemplate({ name: 'Starter agent', persona: 'You complete one step of a fixed workflow.' })
     }
-    if (template === undefined) throw new Error('choose an entry agent before creating a flow')
     const saved = await this.saveFlow({
       name: 'Untitled flow',
       nodes: [

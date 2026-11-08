@@ -12,7 +12,7 @@ A run's original request previously reached only nodes with an explicit Start in
 
 `GraphExecutor.readsUserInput` treats every direct execution successor of the Start node as an entry node and gives it the run's original request by default. An explicit Start input edge still adds the request to any other node. The resolved fact is recorded in the run's `userInput` field. Input edges remain non-scheduling references; save-time validation and scheduling are unchanged.
 
-The editor's missing-input warning and the composer claim warning are removed because the condition no longer exists. Explicit Start input edges remain available for non-entry nodes. The default applies to every direct Start successor, including parallel entry branches.
+Flow creation also no longer asks for an entry role before the document exists: it writes a neutral `start → Starter agent → end` graph, and the entry role is chosen in the canvas. The editor's missing-input warning and the composer claim warning are removed because the condition no longer exists. Explicit Start input edges remain available for non-entry nodes. The default applies to every direct Start successor, including parallel entry branches.
 
 ## Verification
 
@@ -28,4 +28,4 @@ The editor's missing-input warning and the composer claim warning are removed be
 
 ## Consequences
 
-Every flow now starts with its request visible to the entry task, including the interactive entry. Non-entry nodes still need an explicit Start input edge to read the request. The rule reverses the earlier explicit-input default; the editor no longer warns about a missing entry input line.
+Every flow now starts with its request visible to the entry task, including the interactive entry. Non-entry nodes still need an explicit Start input edge to read the request. The rule reverses the earlier explicit-input default; the editor no longer warns about a missing entry input line. Creating a flow is one click, and the entry role is graph-owned rather than a pre-creation choice.

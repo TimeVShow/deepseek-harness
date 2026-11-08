@@ -29,7 +29,6 @@ import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import type {
   AgentTemplate,
   AgentTemplateDraft,
-  AgentTemplateId,
   FlowDocument,
   FlowDraft,
   FlowId,
@@ -67,7 +66,7 @@ export interface AgentFlowInjected {
   setView: (view: AgentFlowView) => void
   selectFlow: (id: FlowId | undefined) => void
   updateDraft: (mutate: (draft: FlowDocument) => void) => void
-  createFlow: (templateId?: AgentTemplateId) => Promise<void>
+  createFlow: () => Promise<void>
   saveFlow: (draft: FlowDraft) => Promise<FlowDocument>
   deleteFlow: (id: FlowId) => Promise<void>
   saveTemplate: (draft: AgentTemplateDraft) => Promise<AgentTemplate>
@@ -232,7 +231,7 @@ function registerUi(ctx: ClientContext, options: FlowPanelOptions): void {
     setView: (view) => { controller.setView(view) },
     selectFlow: (id) => { controller.selectFlow(id) },
     updateDraft: (mutate) => { controller.updateDraft(mutate) },
-    createFlow: async (templateId) => { await controller.createFlow(templateId) },
+    createFlow: async () => { await controller.createFlow() },
     saveFlow: async draft => await controller.saveFlow(draft),
     deleteFlow: async (id) => { await controller.deleteFlow(id) },
     saveTemplate: async draft => await controller.saveTemplate(draft),

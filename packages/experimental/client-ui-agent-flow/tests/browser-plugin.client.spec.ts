@@ -306,7 +306,7 @@ describe('Agent Flow browser plugin', () => {
     await call('selectFlow', undefined as never)
     await call('updateDraft', (() => {}) as never)
     await call('openSession', 'session-1' as never)
-    await call('createFlow', 'template-1' as never)
+    await call('createFlow')
     await call('saveFlow', { name: 'n', nodes: [], edges: [] } as never)
     await call('deleteFlow', 'flow-1' as never)
     await call('saveTemplate', { name: 't' } as never)

@@ -7,7 +7,6 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type {
   AgentTemplate,
   AgentTemplateDraft,
-  AgentTemplateId,
   FlowDocument,
   FlowRun,
 } from '@deepseek-ai/dsh-experimental-agent-flow/types'
@@ -105,7 +104,6 @@ export function AgentFlowPage({ useAgentFlow, t, ...face }: AgentFlowPageProps):
   const [notice, setNotice] = useState<string | undefined>(undefined)
   const [templateForm, setTemplateForm] = useState<TemplateForm>(EMPTY_TEMPLATE)
   const [savingTemplate, setSavingTemplate] = useState(false)
-  const [entryTemplateId, setEntryTemplateId] = useState<AgentTemplateId | ''>('')
   /** Identity of the form being edited; field edits do not change it. */
   const formSeq = useRef(0)
   const savingTemplateRef = useRef(false)
@@ -118,15 +116,6 @@ export function AgentFlowPage({ useAgentFlow, t, ...face }: AgentFlowPageProps):
 
   useEffect(() => { void load() }, [load])
   useEffect(() => { setProblems([]) }, [snapshot.selectedFlowId])
-  /* The chosen entry agent can disappear while this selector is hidden on
-     another tab. Clearing the stale id keeps creation from submitting one the
-     roster no longer has, and returns the choice to the user. */
-  useEffect(() => {
-    if (entryTemplateId === '') return
-    if (snapshot.templates.some(template => template.id === entryTemplateId)) return
-    setEntryTemplateId('')
-  }, [entryTemplateId, snapshot.templates])
-
   const run = async (action: () => Promise<void>, key: 'error.load' | 'error.save' | 'error.cancel' | 'error.conclude'): Promise<void> => {
     setProblems([])
     setNotice(undefined)
@@ -435,30 +424,11 @@ export function AgentFlowPage({ useAgentFlow, t, ...face }: AgentFlowPageProps):
       {header}
       {banner}
       <section className={styles.list}>
-        {snapshot.templates.length === 0 ? null : (
-          <label className={styles.field}>
-            <span>{t('flows.entryAgent')}</span>
-            <select
-              aria-label={t('flows.entryAgent')}
-              value={entryTemplateId}
-              onChange={(event) => { setEntryTemplateId(event.target.value as AgentTemplateId) }}
-            >
-              <option value="" disabled>{t('flows.entryAgentPlaceholder')}</option>
-              {snapshot.templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}
-            </select>
-          </label>
-        )}
         <Button
           variant="primary"
-          disabled={snapshot.templates.length > 0
-            && !snapshot.templates.some(template => template.id === entryTemplateId)}
           onClick={() => {
-            /* Only an id the roster still lists reaches creation: a template
-               deleted while this tab was hidden leaves no entry agent to send,
-               and no templates means the neutral Starter. */
-            const chosen = snapshot.templates.find(template => template.id === entryTemplateId)?.id
             void run(async () => {
-              await face.createFlow(chosen)
+              await face.createFlow()
             }, 'error.save')
           }}
         >

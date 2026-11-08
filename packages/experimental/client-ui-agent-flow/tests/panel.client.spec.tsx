@@ -252,42 +252,13 @@ describe('Agent Flow panel', () => {
     expect(screen.getByText(/boom/)).toBeDefined()
   })
 
-  it('creates and deletes a flow', () => {
+  it('creates and deletes a flow without a pre-selected entry agent', () => {
     const { props, face } = bench()
     render(<AgentFlowPage {...props} />)
-    expect(screen.getByText('New flow')).toHaveProperty('disabled', true)
-    fireEvent.change(screen.getByLabelText('Entry agent'), { target: { value: TEMPLATE } })
     fireEvent.click(screen.getByText('New flow'))
-    expect(face.createFlow).toHaveBeenCalledWith(TEMPLATE)
+    expect(face.createFlow).toHaveBeenCalledWith()
     fireEvent.click(screen.getByText('Delete'))
     expect(face.deleteFlow).toHaveBeenCalledWith(FLOW)
-  })
-
-  it('drops the chosen entry agent once its template is deleted, then creates the neutral starter', () => {
-    const { props, face, store } = bench()
-    render(<AgentFlowPage {...props} />)
-    fireEvent.change(screen.getByLabelText('Entry agent'), { target: { value: TEMPLATE } })
-    /* The Agents tab deletes the last remaining template while the flow list is
-       hidden; the roster comes back empty. */
-    fireEvent.click(screen.getByText('Agents'))
-    act(() => { store.update((current) => { current.templates = [] }) })
-    fireEvent.click(screen.getByText('Flows'))
-    expect(screen.queryByLabelText('Entry agent')).toBeNull()
-    fireEvent.click(screen.getByText('New flow'))
-    expect(face.createFlow).toHaveBeenCalledWith(undefined)
-  })
-
-  it('requires a fresh entry choice when another template remains', () => {
-    const { props, face, store } = bench()
-    render(<AgentFlowPage {...props} />)
-    fireEvent.change(screen.getByLabelText('Entry agent'), { target: { value: TEMPLATE } })
-    const replacement = { id: 'template-2' as AgentTemplateId, name: 'Replacement', createdAt: 'a', updatedAt: 'a' }
-    act(() => { store.update((current) => { current.templates = [replacement] }) })
-    expect(screen.getByText('New flow')).toHaveProperty('disabled', true)
-    expect(screen.getByLabelText('Entry agent')).toHaveProperty('value', '')
-    fireEvent.change(screen.getByLabelText('Entry agent'), { target: { value: replacement.id } })
-    fireEvent.click(screen.getByText('New flow'))
-    expect(face.createFlow).toHaveBeenCalledWith(replacement.id)
   })
 
   it('edits an agent', () => {

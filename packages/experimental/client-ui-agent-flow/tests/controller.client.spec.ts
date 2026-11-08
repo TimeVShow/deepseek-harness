@@ -208,31 +208,14 @@ describe('Agent Flow panel controller', () => {
     expect(controller.state.getSnapshot().view).toBe('runs')
   })
 
-  it('creates a starter flow with its template and selects it', async () => {
+  it('creates a starter flow with a neutral entry agent and selects it', async () => {
     const { ctx, controller, calls } = bench()
     contexts.push(ctx)
     await controller.load()
-    await controller.createFlow(TEMPLATE)
+    await controller.createFlow()
+    expect(calls.some(call => call.startsWith('saveTemplate:'))).toBe(true)
     expect(calls.some(call => call.startsWith('saveFlow:'))).toBe(true)
     expect(controller.state.getSnapshot().selectedFlowId).toBe(FLOW)
-  })
-
-  it('requires an explicit entry agent when templates exist', async () => {
-    const { ctx, controller, calls } = bench()
-    contexts.push(ctx)
-    await controller.load()
-    await expect(controller.createFlow()).rejects.toThrow('choose an entry agent before creating a flow')
-    await controller.createFlow(TEMPLATE)
-    expect(calls.find(call => call.startsWith('saveFlow:'))).toContain(`"templateId":"${String(TEMPLATE)}"`)
-  })
-
-  it('creates the starter template when none exists yet', async () => {
-    const empty = bench()
-    contexts.push(empty.ctx)
-    vi.spyOn(empty.agentFlows, 'listTemplates').mockResolvedValue({ ok: true, value: [] })
-    await empty.controller.load()
-    await empty.controller.createFlow()
-    expect(empty.calls.some(call => call.startsWith('saveTemplate:'))).toBe(true)
   })
 
   it('saves, deletes, and clears a deleted selection', async () => {
@@ -722,12 +705,6 @@ describe('Agent Flow panel controller', () => {
     const kept = controller.state.getSnapshot().nodeActivity
     await controller.load()
     expect(controller.state.getSnapshot().nodeActivity).toBe(kept)
-  })
-
-  it('refuses a start that names an entry agent the roster does not carry', async () => {    const { ctx, controller } = bench()
-    contexts.push(ctx)
-    await controller.load()
-    await expect(controller.createFlow('missing' as AgentTemplateId)).rejects.toThrow('unknown entry agent template: missing')
   })
 
   it('keeps a rename typed while the save was in flight', async () => {
