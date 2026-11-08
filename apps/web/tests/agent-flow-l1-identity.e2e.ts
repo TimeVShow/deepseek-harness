@@ -382,7 +382,9 @@ describe('web e2e: agent-flow L1 identity', () => {
     await expect.poll(async () => await cardCount(first)).toBe(1)
 
     // New Session: a different identity that owns no run and shows no card.
-    await first.getByRole('button', { name: 'New session', exact: true }).first().click()
+    // The brand mark also exposes an aria-label of "New session", so target the
+    // header control rather than the first match.
+    await first.getByRole('button', { name: 'New session', exact: true }).last().click()
     await expect.poll(async () => await selected(first)).not.toBe(s1)
     const s2 = (await selected(first))!
     expect(members().sort()).toEqual([s1, s2].sort())
@@ -538,11 +540,12 @@ describe('web e2e: agent-flow L1 identity', () => {
     const checker = run.nodeRuns.find(entry => entry.nodeId === 'checker')!
     expect(writer.status).toBe('succeeded')
     expect(checker.status).toBe('succeeded')
-    // The node Session's own directory is its sandbox root, so the upstream
-    // delivery written by the writer stays outside the checker's write scope.
+    // The node Session's immutable header cwd is its own directory, which every
+    // host uses as the sandbox root; the upstream writer directory stays outside.
+    using observed = await scaffold.ctx.sessionQuery.observeSession(checker.agentSessionId!)
+    expect(observed.header.cwd).toBe(checker.dir)
     const events = await readPersistedEvents(scaffold, checker.agentSessionId!)
-    expect(events.filter(event => event.type === 'sandbox/root').map(event => event.data))
-      .toEqual([{ root: checker.dir }])
+    expect(events.filter(event => event.type === 'sandbox/root')).toEqual([])
     const upstream = join(writer.dir!, 'original.txt')
     const results = events
       .filter(event => event.type === 'tool/result')
@@ -576,9 +579,10 @@ describe('web e2e: agent-flow L1 identity', () => {
     expect(String(run.flowId)).toBe(String(flowE))
     const reviewer = run.nodeRuns.find(entry => entry.nodeId === 'reviewer')!
     expect(reviewer.status).toBe('succeeded')
+    using observed = await scaffold.ctx.sessionQuery.observeSession(reviewer.agentSessionId!)
+    expect(observed.header.cwd).toBe(reviewer.dir)
     const events = await readPersistedEvents(scaffold, reviewer.agentSessionId!)
-    expect(events.filter(event => event.type === 'sandbox/root').map(event => event.data))
-      .toEqual([{ root: reviewer.dir }])
+    expect(events.filter(event => event.type === 'sandbox/root')).toEqual([])
     const results = events
       .filter(event => event.type === 'tool/result')
       .map(event => JSON.stringify(event.data))

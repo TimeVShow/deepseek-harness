@@ -6,30 +6,33 @@ English | [中文](2026-11-08-agent-flow-node-directories-are-sandbox-roots.zh.m
 
 ## Problem
 
-A run's nodes worked in their own iteration directories under `.dsh/flows/<run>/<iteration>-<node>`, but their file-effect boundary was the parent workspace: a worker child inherited the parent Session header cwd, and the interactive conversation recorded the workspace too. A downstream node could therefore overwrite, delete, rename, or replace an upstream deliverable through the file tools or any subprocess, including a same-byte write. Prompt guidance and end-of-run hash checks cannot make that read-only.
+A run's nodes worked in their own iteration directories under `.dsh/flows/<run>/<iteration>-<node>`, but the sandbox root on the official host is the Session's immutable header cwd. Worker children inherited the flow Session's header cwd, and an interactive conversation recorded the workspace, so a downstream node could overwrite, delete, rename, or replace an upstream deliverable through the file tools or any subprocess. The first fix narrowed the root through new host interfaces (`sandbox/root` and `sandboxRoot`); the official host does not ship them, so a standalone plugin install could not enforce the boundary.
 
 ## Decision
 
-Sandbox policy gains a per-session `sandbox/root` override beside `sandbox/mode`. `SandboxPolicyService.setRoot` appends the event, the `sandboxRoot` projection folds it, and `resolve()` uses the last override before the immutable header cwd. The event is log-only, survives restart by replay, and leaves the header cwd as the Session's workspace identity, so workspace membership and Session listing are unchanged.
+Every node Session's immutable header cwd is its iteration directory, which the host's existing sandbox policy already uses as the `workspace-write` root:
 
-`SubagentStartRequest.sandboxRoot` carries the same boundary into an in-process child. The manager writes it before the first request, and a backend that cannot honor it (any out-of-process one) refuses the request through the `sandboxRoot` capability instead of silently widening it. Delegation also inherits the parent's override under `source: 'delegation'`, so a node's own children cannot escape its directory.
+- A worker runs under a per-node **carrier Session** created with `meta.cwd = <iteration dir>`. The carrier composes the run parent's preset and route, starts the existing subagent child, and is disposed with the child; the child inherits the carrier's header cwd, so its file tools and subprocesses are rooted at the iteration directory, and its own delegated children inherit the same root.
+- An interactive conversation records the iteration directory as its own header cwd. It joins the workspace only when its directory is the workspace root; a node directory cannot be a workspace member, and the run record addresses the Session by id.
 
-The runtime scopes every agent node to its iteration directory. A worker passes that directory as `request.sandboxRoot`; an interactive conversation records the workspace as its header cwd but sets the node directory as its working directory and sandbox root. Both apply only when the deployment mounts sandbox policy; without it there are no confined writes to narrow.
+The flow packages no longer call `sandboxPolicy.setRoot` or pass `request.sandboxRoot`. Those host additions remain available to other consumers in the fork, but the Agent Flow path needs no host modification, so the four packages install onto the official `0.2.2-rc.1` host unchanged.
 
 ## Verification
 
-`packages/sandbox/sandbox-policy/tests/policy.spec.ts` covers resolution precedence, replay, and rejection of a relative root. `packages/subagent/subagent/tests/sandbox-root.spec.ts` covers the child event, delegation inheritance, the unsupported-backend refusal, and the missing-service failure. `packages/experimental/agent-flow-runtime/tests/graph.spec.ts` asserts the worker `sandboxRoot` and the interactive conversation's working directory and resolved root. `apps/web/tests/agent-flow-l1-identity.e2e.ts` E26 runs a real Bash overwrite attempt from a downstream node in the shipped Web composition: the upstream file keeps its bytes and the tool result records the denial.
+`packages/experimental/agent-flow-runtime/tests/graph.spec.ts` asserts the carrier's `cwd`/`origin`/`parentSession`/`delegationDepth`, the interactive conversation's header cwd, and the child request directory. `apps/web/tests/agent-flow-l1-identity.e2e.ts` E26/E27 drive six real Bash writes from a worker and an interactive node in the shipped Web composition: the Session header cwd is the node directory, every tool result reports `STEP-DENIED`, and the upstream file keeps its bytes.
+
+On the official host, the four candidate tarballs installed into a fresh `0.2.2-rc.1` profile with the official `subagent` and `sandbox-policy`. A seeded writer→checker flow and an interactive entry flow each recorded their node Session header cwd as the iteration directory and six denied writes (`STEP-DENIED`); `original.txt` and `upstream.txt` stayed intact. The official child inherits `cwd: parentHeader.cwd`, which is what makes the carrier sufficient.
 
 ## Alternatives considered
 
-**Check hashes after the run.** Detection, not enforcement; the overwritten file has already replaced the upstream deliverable.
+**Host-provided root override (`sandbox/root` + `sandboxRoot`).** It confines the fork's children, but the official host has neither event nor capability, so a standalone install silently widens the boundary. Kept only as an available fork seam, not used by the flow packages.
 
-**Make delivered files read-only on disk.** The sandboxed process runs as the same user and can restore the mode, and the grant covers the parent workspace anyway.
+**Hash checks or read-only file modes.** Detection, not enforcement; the sandboxed process runs as the same user and can restore modes.
 
-**Record the node directory as the child Session header cwd.** This narrows the boundary because sandbox policy already reads the header, but it breaks workspace attachment and bootstrap grouping: a Session whose canonical cwd differs from the workspace path cannot be a member.
+**Run every worker as a root Session instead of a subagent child.** It removes the carrier, but loses the subagent manager's result delivery, delegation policies, and the test fixtures that script node behavior; the rewrite is larger than the boundary needs.
 
-**Treat the Session working directory as the boundary.** A `cd` would then change permissions, including widening them when the new directory lies outside the workspace.
+**Record the node directory as the child header cwd through a custom subagent provider.** The manager builds the child header from the parent; providers can only supply a seed, so this cannot change the sandbox root.
 
 ## Consequences
 
-Worker and interactive nodes now share one boundary rule, and upstream deliverables stay readable but unwritable. The `sandbox/root` event is required on read, so a build without it refuses to resume such a Session rather than silently widening the boundary; this is a host addition that the fork release must list. Platform temporary areas remain writable under `workspace-write`, so a workspace itself residing in the system temp directory cannot demonstrate the denial — the Web acceptance lane uses a HOME-based workspace. A deployment that does not mount sandbox policy keeps its existing behavior: nodes are not confined.
+Worker and interactive nodes share one boundary rule that needs no host change. Each worker adds one hidden, empty carrier Session per iteration; it is disposed with the child and stays out of the sidebar as a subagent-origin record. Node Sessions are not workspace members, so the workspace sidebar does not list them; the run record, progress card, and results page address them by id. Platform temporary areas remain writable under `workspace-write`, so a workspace itself residing in the system temp directory cannot demonstrate the denial — the acceptance lanes use a HOME-based workspace.

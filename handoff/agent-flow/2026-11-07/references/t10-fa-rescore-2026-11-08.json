@@ -1,0 +1,33 @@
+{
+  "case": "T10-FA-01",
+  "runId": "c847a881-da15-4c90-ad5a-697d5916967a",
+  "status": "completed",
+  "original": {
+    "checks": {
+      "completed": true,
+      "writerOk": false,
+      "checkerOk": true,
+      "noTools": true,
+      "routeOk": true
+    },
+    "accepted": false
+  },
+  "rescored": {
+    "checks": {
+      "completed": true,
+      "nodes_succeeded": true,
+      "iterations_zero": true,
+      "case_retained": false,
+      "headings": true,
+      "word_limit": true,
+      "ends_done": true,
+      "checker_pass": true,
+      "no_tools": true,
+      "one_request_per_node": true,
+      "route": true
+    },
+    "writerWords": 66,
+    "accepted": false
+  },
+  "note": "The CASE marker is an explicit task requirement (the test plan asks every node to retain it), so the missing marker in the writer's handoff keeps the frozen verdict failed even though the content checks pass."
+}

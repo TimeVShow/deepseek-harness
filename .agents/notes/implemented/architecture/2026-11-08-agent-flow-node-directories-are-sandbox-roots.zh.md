@@ -6,30 +6,33 @@
 
 ## 问题
 
-运行的各节点在 `.dsh/flows/<run>/<iteration>-<node>` 下自己的迭代目录中工作，但文件操作边界是父工作区：工作节点继承了父会话的 header cwd，交互对话也记录工作区。下游节点因此可以通过文件工具或任意子进程覆盖、删除、重命名或替换上游交付物，包括同字节写入。提示词引导和运行后的哈希校验都无法保证只读。
+运行的各节点在 `.dsh/flows/<run>/<iteration>-<node>` 下自己的迭代目录中工作，但官方宿主的沙箱根是会话不可变的 header cwd。工作子级继承了父会话的 header cwd，交互对话记录的是工作区，因此下游节点可以通过文件工具或任意子进程覆盖、删除、重命名或替换上游交付物。最初的修复通过新的宿主接口（`sandbox/root` 与 `sandboxRoot`）收窄根目录；官方宿主并不提供它们，独立安装插件时无法保证该边界。
 
 ## 决策
 
-sandbox policy 在 `sandbox/mode` 之外新增逐会话的 `sandbox/root` 覆盖。`SandboxPolicyService.setRoot` 追加该事件，`sandboxRoot` 投影折叠它，`resolve()` 在不可变 header cwd 之前采用最后一次覆盖。事件仅进入日志，通过回放跨重启保留，并保留 header cwd 作为会话的工作区标识，因此工作区成员关系与会话列表不变。
+每个节点会话不可变的 header cwd 就是它的迭代目录，宿主现有的 sandbox policy 已把这个值当作 `workspace-write` 根：
 
-`SubagentStartRequest.sandboxRoot` 把同一界限传给进程内子级。管理器在首次请求前写入它；无法履行的后端（任何进程外后端）会通过 `sandboxRoot` 能力拒绝请求，而不是静默放宽。委派还会以 `source: 'delegation'` 继承父级覆盖，因此节点自己派生的子级无法逃出它的目录。
+- 工作节点运行在每节点一个的 **carrier 会话**下，创建时 `meta.cwd = <迭代目录>`。carrier 组合运行父会话的 preset 与路由，启动现有的 subagent 子级，并随子级一起处置；子级继承 carrier 的 header cwd，因此其文件工具与子进程以迭代目录为写根，它自己派生的子级也继承同一根。
+- 交互对话把迭代目录记录为自己的 header cwd。只有目录等于工作区根时它才加入工作区；节点目录不能成为工作区成员，运行记录用 id 定位该会话。
 
-运行时把每个 agent 节点限定在其迭代目录内。工作节点把该目录作为 `request.sandboxRoot` 传入；交互对话把工作区记录为 header cwd，但把节点目录设为工作目录与沙箱根。两者都只在部署挂载 sandbox policy 时生效；没有它就没有可收窄的受限写入。
+Flow 包不再调用 `sandboxPolicy.setRoot`，也不再传 `request.sandboxRoot`。这两项宿主新增仍可供 fork 内其他使用方使用，但 Agent Flow 路径不需要修改宿主，四个包可以原样安装到官方 `0.2.2-rc.1` 宿主。
 
 ## 验证
 
-`packages/sandbox/sandbox-policy/tests/policy.spec.ts` 覆盖解析优先级、回放以及相对根目录的拒绝。`packages/subagent/subagent/tests/sandbox-root.spec.ts` 覆盖子级事件、委派继承、不支持后端时的拒绝以及缺少服务时的失败。`packages/experimental/agent-flow-runtime/tests/graph.spec.ts` 断言工作节点的 `sandboxRoot` 以及交互对话的工作目录和解析出的根。`apps/web/tests/agent-flow-l1-identity.e2e.ts` 的 E26 在交付版 Web 组合中由下游节点发起真实 Bash 覆盖尝试：上游文件保持原字节，工具结果记录拒绝。
+`packages/experimental/agent-flow-runtime/tests/graph.spec.ts` 断言 carrier 的 `cwd`/`origin`/`parentSession`/`delegationDepth`、交互对话的 header cwd 以及子级请求目录。`apps/web/tests/agent-flow-l1-identity.e2e.ts` 的 E26/E27 在交付版 Web 组合中由工作节点和交互节点各发起六次真实 Bash 写入：会话 header cwd 为节点目录，所有工具结果都是 `STEP-DENIED`，上游文件保持原字节。
+
+在官方宿主上，四个候选 tarball 安装进全新的 `0.2.2-rc.1` profile，使用官方 `subagent` 与 `sandbox-policy`。播种的 writer→checker 流程与交互入口流程都把节点会话 header cwd 记录为迭代目录，并各自得到六次拒绝（`STEP-DENIED`）；`original.txt` 与 `upstream.txt` 保持不变。官方子级继承 `cwd: parentHeader.cwd`，这正是 carrier 足够的原因。
 
 ## 考虑的替代方案
 
-**运行后校验哈希。** 这是检测而非强制；被覆盖的文件已经替换了上游交付物。
+**宿主提供根覆盖（`sandbox/root` + `sandboxRoot`）。** 能约束 fork 的子级，但官方宿主既无事件也无能力，独立安装会静默放宽边界。仅保留为 fork 可用 seam，Flow 包不再使用。
 
-**把交付文件设为磁盘只读。** 受限进程以同一用户运行，可以改回权限，而且授权本来就覆盖父工作区。
+**哈希校验或只读文件模式。** 这是检测而非强制；受限进程以同一用户运行，可以改回权限。
 
-**把节点目录记录为子会话 header cwd。** 由于 sandbox policy 已读取 header，这会收窄边界，但会破坏工作区挂载与 bootstrap 分组：canonical cwd 与工作区路径不同的会话无法成为成员。
+**把每个工作节点都改成 root 会话而不是 subagent 子级。** 这样可以去掉 carrier，但会失去 subagent 管理器的结果投递、委派策略以及脚本化节点行为的测试夹具；改动规模超过边界本身。
 
-**把会话工作目录当作边界。** 这样 `cd` 会改变权限，包括在新目录位于工作区之外时放宽权限。
+**通过自定义 subagent provider 把节点目录写进子级 header cwd。** 管理器用父会话构造子级 header，provider 只能提供 seed，无法改变沙箱根。
 
 ## 后果
 
-工作节点与交互节点现在共享同一条界限规则，上游交付物可读但不可写。`sandbox/root` 事件在读取时是必需的，因此不认识它的构建会拒绝恢复该会话，而不是静默放宽边界；这是 fork 发布必须列出的宿主新增项。`workspace-write` 下平台临时区域仍可写，因此位于系统临时目录中的工作区无法演示拒绝——Web 验收通道改用 HOME 下的工作区。未挂载 sandbox policy 的部署保持原有行为：节点不受限制。
+工作节点与交互节点共享同一条无需宿主改动的边界规则。每个工作迭代新增一个隐藏的空 carrier 会话；它随子级处置，并作为 subagent 来源记录不进入侧栏。节点会话不是工作区成员，因此侧栏不列出它们；运行记录、进度卡与结果页用 id 定位。`workspace-write` 下平台临时区域仍可写，因此位于系统临时目录的工作区无法演示拒绝——验收通道使用 HOME 下的工作区。

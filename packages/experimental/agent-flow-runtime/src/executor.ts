@@ -6,12 +6,15 @@
  * @module @deepseek-ai/dsh-experimental-agent-flow-runtime/src/executor
  */
 
+import { randomUUID } from 'node:crypto'
 import { mkdir, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { AgentOptions } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {
   AgentTemplate,
   ExecutionLoop,
@@ -377,21 +380,51 @@ class GraphRun {
     words: string[],
   ): Promise<NodeHandoff> {
     let child: SubagentActivation | undefined
+    const parent = this.controller.parent
+    /* The carrier stands in for the run's parent when a template does not name
+       its own route, so it carries the parent's effective selection. */
+    const requestHeader = parent.session.requestHeader()
+    const carrierOptions: AgentOptions = {
+      ...parent.options,
+      ...requestHeader?.config === undefined ? {} : {
+        provider: requestHeader.config.provider,
+        model: requestHeader.config.model,
+        ...requestHeader.config.reasoningEffort === undefined
+          ? {} : { reasoningEffort: requestHeader.config.reasoningEffort },
+      },
+    }
+    /* The child's immutable header cwd is its sandbox root on every host, and
+       the subagent contract keeps that value inherited from the parent. A
+       per-node carrier Session whose header cwd is the iteration directory
+       therefore confines the child without changing host packages: upstream
+       deliverables stay outside its workspace-write root. The carrier runs no
+       turn and is disposed with the child; its empty Session stays hidden as a
+       subagent-origin record. */
+    const carrier = await this.ctx.agents.create({
+      sessionId: brandString<SessionId>(`flow-node-${randomUUID()}`),
+      signal: this.signal,
+      meta: {
+        cwd: dir,
+        parentSession: parent.session.id,
+        origin: 'subagent',
+        delegationDepth: parent.session.header.delegationDepth ?? 0,
+      },
+      // The carrier stands in for the run's parent when the child inherits its
+      // route, so it carries the parent's effective selection.
+      agentOptions: carrierOptions,
+      setup: (agentCtx) => {
+        agentCtx.get('agentPresets')?.composeFrom(agentCtx, parent.ctx)
+      },
+    })
     try {
       const agentOptions = agentOptionsOf(template)
-      /* A deployment with the sandbox policy confines every worker to its own
-         iteration directory, so upstream deliverables stay read-only. Without
-         that service the deployment has no confined writes at all, and naming
-         a root would only make the start fail. */
-      const sandboxRoot = this.ctx.get('sandboxPolicy') === undefined ? undefined : dir
       child = await this.ctx.subagents.startActivation({
         provider: this.settings.provider,
         label: this.nodeName(node),
         request: {
           cwd: dir,
-          ...sandboxRoot === undefined ? {} : { sandboxRoot },
           prompt: [{ type: 'text', text: prompt }],
-          parent: this.controller.parent,
+          parent: carrier.agent,
           ...agentOptions === undefined ? {} : { agentOptions },
         },
         signal: this.signal,
@@ -421,7 +454,11 @@ class GraphRun {
       }
       return { handoff, files: await listFiles(dir), result: parsed }
     } finally {
-      if (child !== undefined) await this.disposeChild(child)
+      try {
+        if (child !== undefined) await this.disposeChild(child)
+      } finally {
+        await carrier.dispose()
+      }
     }
   }
 

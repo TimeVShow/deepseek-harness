@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
 import { mountWorkingDirectoryFixture } from './working-directory-fixture.ts'
 import type { Agent, ModelSelection } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
@@ -90,7 +89,6 @@ async function setup(options: {
   ctx.provide('storageDomain', facility)
   await mountWorkingDirectoryFixture(ctx)
   if (ctx.get('sessionProjections') === undefined) await ctx.plugin(SessionProjectionRegistry)
-  await ctx.plugin(SandboxPolicyService, { mode: 'workspace-write' })
   await ctx.plugin(SubagentService)
   const stub = new StubProvider('stub', options.scripts ?? {})
   ctx.subagents.registerProvider(stub)
@@ -123,7 +121,7 @@ async function setup(options: {
   }
   const workspace = await mkdtemp(join(tmpdir(), 'dsh-flow-runtime-'))
   workspaces.push(workspace)
-  const parent = { id: SessionId('parent-session'), session: { id: SessionId('parent-session'), header: { cwd: workspace } }, ctx } as Agent
+  const parent = { id: SessionId('parent-session'), session: { id: SessionId('parent-session'), header: { cwd: workspace }, requestHeader: () => undefined }, ctx } as Agent
   roots.adopt(parent)
   return { ctx, service: ctx.agentFlows, stub, roots, pool, parent, workspace, attached, titled }
 }
@@ -210,7 +208,7 @@ describe('Agent Flow graph runtime', () => {
         a2: { text: 'final answer' },
       },
     })
-    const { service, stub, workspace } = harness
+    const { service, stub, roots, workspace } = harness
     const flow = await seed(service, templateId => ({
       nodes: [start(), agent('a1', templateId, 'classify the topic'), agent('a2', templateId, 'summarize the classification'), end()],
       edges: [
@@ -232,11 +230,12 @@ describe('Agent Flow graph runtime', () => {
     ])
     const dir1 = join(workspace, '.dsh', 'flows', String(run.id), '00-a1')
     const dir2 = join(workspace, '.dsh', 'flows', String(run.id), '00-a2')
-    // Each worker's own directory is both the working directory it sees and the
-    // sandbox root its writes must stay under, so upstream files stay read-only.
-    expect(stub.requests.map(request => [request.cwd, request.sandboxRoot])).toEqual([
-      [dir1, dir1],
-      [dir2, dir2],
+    // Each worker's iteration directory is the header cwd of its carrier, which
+    // the child inherits as its sandbox root; upstream files stay read-only.
+    expect(stub.requests.map(request => request.cwd)).toEqual([dir1, dir2])
+    expect(roots.created.map(root => root.options.meta)).toEqual([
+      { cwd: dir1, parentSession: 'parent-session', origin: 'subagent', delegationDepth: 0 },
+      { cwd: dir2, parentSession: 'parent-session', origin: 'subagent', delegationDepth: 0 },
     ])
     const first = settled.nodeRuns.find(entry => entry.nodeId === 'a1')
     expect(first).toMatchObject({
@@ -394,15 +393,14 @@ describe('Agent Flow graph runtime', () => {
 
     const run = await startRun(harness, flow, 'write a sorter')
     const root = await waitForRoot(roots)
-    expect(attached).toEqual([root.sessionId])
+    // A node directory cannot be a workspace member, so nothing is attached.
+    expect(attached).toEqual([])
     expect(titled).toEqual(['Senior engineer'])
-    // The conversation stays a member of the run's workspace, but works in and
-    // writes under its own iteration directory; upstream deliveries stay outside
-    // that sandbox root.
-    expect(root.options.meta).toEqual({ cwd: workspace })
-    expect(ctx.workingDirectory.get(root.agent.session)).toBe(join(workspace, '.dsh', 'flows', String(run.id), '00-a1'))
-    expect(ctx.sandboxPolicy.resolve({ session: root.agent.session }).workspaceRoot)
-      .toBe(join(workspace, '.dsh', 'flows', String(run.id), '00-a1'))
+    // The conversation's header cwd is its own iteration directory on every
+    // host, which makes it the sandbox root that keeps upstream files read-only.
+    const nodeDir = join(workspace, '.dsh', 'flows', String(run.id), '00-a1')
+    expect(root.options.meta).toEqual({ cwd: nodeDir })
+    expect(ctx.workingDirectory.get(root.agent.session)).toBe(nodeDir)
     expect(root.options.agentOptions).toMatchObject({ provider: 'default-route', model: 'default-model' })
     expect(root.prompts).toHaveLength(2)
     const opening = root.prompts[0] ?? ''

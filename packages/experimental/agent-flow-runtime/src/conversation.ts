@@ -45,15 +45,15 @@ export interface ConversationRequest {
   /** Runtime context and the optional original request, delivered separately. */
   readonly prompt: ConversationPrompt
   /**
-   * Workspace directory the Session records as its immutable origin. The
-   * conversation stays a member of the workspace its run belongs to, so this
-   * must be that workspace, not the node's own directory.
+   * Workspace directory the run belongs to. The Session joins that workspace
+   * only when this equals `cwd`; a node directory cannot be a workspace member,
+   * and the run record addresses the Session by id instead.
    */
   readonly workspace: string
   /**
-   * The node's own directory: the conversation's working directory and its
-   * `workspace-write` root, so upstream deliveries stay read-only while this
-   * node's report and build outputs land here.
+   * The node's own directory: the conversation's immutable header cwd, working
+   * directory, and `workspace-write` root, so upstream deliveries stay
+   * read-only while this node's report and build outputs land here.
    */
   readonly cwd: string
   /** Provider route and model every request in the conversation uses. */
@@ -152,17 +152,15 @@ export class Conversation {
     const { agent } = await this.ctx.agents.create({
       sessionId: this.sessionId,
       signal: this.request.signal,
-      meta: { cwd: this.request.workspace },
+      meta: { cwd: this.request.cwd },
       agentOptions: this.request.route,
       setup: async (agentCtx, agent) => {
         // A root Session joined to no preset sees an empty tool registry in an
         // agent-plane composition, so it takes the run's parent composition.
         agentCtx.get('agentPresets')?.composeFrom(agentCtx, parent.ctx)
         installModelSelection(agentCtx)
-        /* The node directory is both where the conversation works and the only
-           place its confined writes may land; the header keeps the workspace so
-           the Session stays a member of the run's workspace. */
-        agentCtx.get('sandboxPolicy')?.setRoot(agent.session, this.request.cwd)
+        /* The node directory is the immutable header cwd, so on every host it is
+           also the confined write root; upstream deliverables stay outside it. */
         await agentCtx.get('workingDirectory')?.set(agent, this.request.cwd, this.request.signal)
         agentCtx.on('agent/pre-step', async ({ messages }, next): Promise<PreStepDecision> => {
           const decision = await next()
@@ -305,12 +303,18 @@ export class Conversation {
     wake?.()
   }
 
-  /** List the Session in the run's workspace and title it after its node. */
+  /** List the Session in the run's workspace when it lives there, and title it. */
   private async announce(agent: Agent): Promise<void> {
-    const registry = this.ctx.get('workspaceRegistry')
-    const parentSessionId = this.request.parent.session.id
-    const workspace = registry?.list().find(candidate => candidate.sessionIds.includes(parentSessionId))
-    await workspace?.attachSession(this.sessionId)
+    /* A node Session's header cwd is its own directory, so it cannot be a
+       workspace member; only a conversation whose directory is the workspace
+       root joins it. The run record and progress card address node Sessions by
+       id, so membership is not needed for navigation. */
+    if (this.request.workspace === this.request.cwd) {
+      const registry = this.ctx.get('workspaceRegistry')
+      const parentSessionId = this.request.parent.session.id
+      const workspace = registry?.list().find(candidate => candidate.sessionIds.includes(parentSessionId))
+      await workspace?.attachSession(this.sessionId)
+    }
     this.ctx.get('sessionTitle')?.rename(agent.session, this.request.title)
   }
 }

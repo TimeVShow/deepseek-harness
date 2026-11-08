@@ -107,7 +107,7 @@ describe('web e2e: agent-flow session isolation', () => {
     expect(members()).toEqual([String(FLOW_PARENT), freshId])
 
     // New Session from the header reuses the only truly-blank member.
-    await first.getByRole('button', { name: 'New session', exact: true }).first().click()
+    await first.getByRole('button', { name: 'New session', exact: true }).last().click()
     await expect.poll(() => selected(first)).toBe(freshId)
     expect(members()).toEqual([String(FLOW_PARENT), freshId])
 
@@ -117,7 +117,7 @@ describe('web e2e: agent-flow session isolation', () => {
     expect(members()).toEqual([String(FLOW_PARENT), freshId])
 
     // A new conversation from the parent history reuses the other blank, never the parent.
-    await history.getByRole('button', { name: 'New session', exact: true }).first().click()
+    await history.getByRole('button', { name: 'New session', exact: true }).last().click()
     await expect.poll(() => selected(history)).toBe(freshId)
     expect(members()).toEqual([String(FLOW_PARENT), freshId])
 
@@ -170,7 +170,7 @@ describe('web e2e: agent-flow session isolation', () => {
 
     // Archive the history row from the fresh blank, reveal the archived list,
     // and restore it; the row never becomes a blank placeholder.
-    await page.getByRole('button', { name: 'New session', exact: true }).first().click()
+    await page.getByRole('button', { name: 'New session', exact: true }).last().click()
     await expect.poll(() => selected(page)).toBe(freshId)
     const history = page.getByRole('tree', { name: 'Sessions' }).locator('[data-row-key="session:flow-parent"]')
     await history.hover()
