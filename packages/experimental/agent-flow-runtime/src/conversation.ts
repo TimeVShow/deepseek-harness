@@ -44,7 +44,17 @@ export interface ConversationRequest {
   readonly title: string
   /** Runtime context and the optional original request, delivered separately. */
   readonly prompt: ConversationPrompt
-  /** Workspace directory the conversation runs in. */
+  /**
+   * Workspace directory the Session records as its immutable origin. The
+   * conversation stays a member of the workspace its run belongs to, so this
+   * must be that workspace, not the node's own directory.
+   */
+  readonly workspace: string
+  /**
+   * The node's own directory: the conversation's working directory and its
+   * `workspace-write` root, so upstream deliveries stay read-only while this
+   * node's report and build outputs land here.
+   */
   readonly cwd: string
   /** Provider route and model every request in the conversation uses. */
   readonly route: ModelSelection
@@ -142,13 +152,18 @@ export class Conversation {
     const { agent } = await this.ctx.agents.create({
       sessionId: this.sessionId,
       signal: this.request.signal,
-      meta: { cwd: this.request.cwd },
+      meta: { cwd: this.request.workspace },
       agentOptions: this.request.route,
-      setup: (agentCtx) => {
+      setup: async (agentCtx, agent) => {
         // A root Session joined to no preset sees an empty tool registry in an
         // agent-plane composition, so it takes the run's parent composition.
         agentCtx.get('agentPresets')?.composeFrom(agentCtx, parent.ctx)
         installModelSelection(agentCtx)
+        /* The node directory is both where the conversation works and the only
+           place its confined writes may land; the header keeps the workspace so
+           the Session stays a member of the run's workspace. */
+        agentCtx.get('sandboxPolicy')?.setRoot(agent.session, this.request.cwd)
+        await agentCtx.get('workingDirectory')?.set(agent, this.request.cwd, this.request.signal)
         agentCtx.on('agent/pre-step', async ({ messages }, next): Promise<PreStepDecision> => {
           const decision = await next()
           if (decision.kind === 'reject' || !this.locked) return decision

@@ -85,6 +85,46 @@ function replyText(options, reviewCalls) {
     reviewCalls.set(caseId, count)
     return { role, caseId, slow, text: `${role} on CASE:${caseId} round ${count}\nResult: ${count === 1 ? 'rework' : 'approved'}` }
   }
+  if (role === 'writer' && /\[SANDBOX\]/.test(joined)) {
+    return hasToolResult(options)
+      ? { role, caseId, text: 'writer created the upstream file\n[SANDBOX-ATTACK]' }
+      : { role, caseId, toolCall: { name: 'bash', args: { command: "printf 'upstream-original' > original.txt", description: 'Create the upstream file' } } }
+  }
+  if ((role === 'checker' || role === 'sandboxcheck') && /\[SANDBOX-(?:ATTACK|ENTRY)\]/.test(joined)) {
+    const upstream = /\[UPSTREAM:([^\]\n]+)\]/.exec(joined)?.[1]
+      ?? /Files:\n- (\/[^\n]+)/.exec(joined)?.[1]
+    const dir = /nowhere else:\n([^\n]+)/.exec(joined)?.[1]
+    if (upstream === undefined || dir === undefined) {
+      return { role, caseId, text: `${role} could not locate the upstream paths` }
+    }
+    /* One refused write per request: a same-byte overwrite, a rewrite, a
+       delete, a rename, a temp-file replacement, and a write through a symlink
+       inside the node's own directory. Each prints STEP-DENIED only when the
+       shell cannot perform it. */
+    const steps = [
+      `printf 'upstream-original' > "${upstream}" || echo STEP-DENIED`,
+      `printf 'hacked' > "${upstream}" || echo STEP-DENIED`,
+      `rm -f "${upstream}" || echo STEP-DENIED`,
+      `mv "${upstream}" "${upstream}.moved" || echo STEP-DENIED`,
+      `printf x > "${dir}/tmpfile" && mv "${dir}/tmpfile" "${upstream}" || echo STEP-DENIED`,
+      `ln -sf "${upstream}" "${dir}/alias" && printf x > "${dir}/alias" || echo STEP-DENIED`,
+    ]
+    const toolResults = (options.messages ?? []).filter(message => message.role === 'tool').length
+    if (toolResults < steps.length) {
+      return {
+        role,
+        caseId,
+        toolCall: { name: 'bash', args: { command: steps[toolResults], description: 'Attempt an upstream write' } },
+      }
+    }
+    return {
+      role,
+      caseId,
+      text: role === 'checker'
+        ? 'checker finished with the upstream file'
+        : 'reviewer finished with the upstream file\nResult: done',
+    }
+  }
   if (/\[LONG\]/.test(joined)) return { role, caseId, slow, text: LONG_MARKDOWN }
   return { role, caseId, text: `${role} handled CASE:${caseId}`, slow }
 }
@@ -153,6 +193,16 @@ export function apply(ctx) {
         // terminal `aborted` finish, exactly like a provider reporting abort.
         throw new Error('scripted hold aborted')
       }
+    }
+    if (reply.toolCall !== undefined) {
+      const args = JSON.stringify(reply.toolCall.args)
+      const callId = `call_${reply.caseId}_${reply.role}`
+      yield { type: 'block-start', index: 0, blockType: 'tool-call' }
+      yield { type: 'tool-call-delta', index: 0, id: callId, name: reply.toolCall.name, argumentsDelta: args }
+      yield { type: 'block-end', index: 0, block: { type: 'tool-call', id: callId, name: reply.toolCall.name, arguments: args } }
+      yield { type: 'usage', usage: { inputTokens: 0, outputTokens: 0 } }
+      yield { type: 'finish', reason: { kind: 'tool-calls' } }
+      return
     }
     const text = reply.text ?? `${reply.role} handled CASE:${reply.caseId}`
     if (reply.slow === true) {

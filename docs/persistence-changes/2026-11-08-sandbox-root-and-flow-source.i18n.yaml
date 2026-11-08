@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-08-sandbox-root-and-flow-source.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-08-sandbox-root-and-flow-source.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-08-sandbox-root-and-flow-source:
+  en: dadea1f59c1904d3
+  zh: 1699d54f11657384
+/2026-11-08-sandbox-root-and-flow-source/summary:
+  en: 248efc7aadfb315b
+  zh: 35d422e9e65c7211
+/2026-11-08-sandbox-root-and-flow-source/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-08-sandbox-root-and-flow-source/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-08-sandbox-root-and-flow-source/compatibility:
+  en: 9c67137057390058
+  zh: e3240d8fa94dc411
+/2026-11-08-sandbox-root-and-flow-source/verification:
+  en: 6a9a9aac3b7621bf
+  zh: 29dfff24c5d03a9a
+/2026-11-08-sandbox-root-and-flow-source/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

@@ -56,6 +56,10 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 A session's mode can be switched at runtime through a UI policy control or an explicit switch; the switch is recorded in the session log and takes effect on the session's next confined call. The switch survives restart through replay, and each session keeps its own mode — two sessions never see each other's state. A switched session keeps its immutable workspace cwd as the writable boundary.
 
+### Narrowing a session's writable root
+
+A session can narrow its `workspace-write` root to a subdirectory through `setRoot`. The narrowing is recorded as one `sandbox/root` event and takes effect on the session's next confined call. It survives restart through replay, stays scoped to that session, and leaves the immutable header cwd as the session's workspace identity. Delegated children inherit the override, so an agent confined to a subdirectory cannot widen its scope by spawning.
+
 ### Failures and recovery
 
 An invalid configured mode is rejected when the plugin loads, so a typo fails loud instead of silently changing policy. A session without a cwd, and agentless calls, fall back to the configured workspace root; a call with an approved explicit mode uses that mode for exactly that call.
@@ -72,11 +76,11 @@ This section explains policy resolution, the per-session store, and the model-vi
 
 ### Resolution precedence
 
-`resolve({ session, mode })` returns one complete per-call policy: an approved explicit mode outranks the session's last `sandbox/mode` event, which outranks the deployment default. The session's immutable `cwd` supplies the workspace root; otherwise the configured fallback applies. Absolute execution-world spelling is preserved. Enforcing providers canonicalize the root on their own filesystem, so remote `symlink/..` paths are never resolved on the Harness host.
+`resolve({ session, mode })` returns one complete per-call policy: an approved explicit mode outranks the session's last `sandbox/mode` event, which outranks the deployment default. The session's last `sandbox/root` event supplies the workspace root, else its immutable `cwd`; otherwise the configured fallback applies. Absolute execution-world spelling is preserved. Enforcing providers canonicalize the root on their own filesystem, so remote `symlink/..` paths are never resolved on the Harness host.
 
 ### The per-session store
 
-A runtime switch is one log-only `sandbox/mode` event on the session it applies to — the switch IS its event, and nothing mutates mode state out of band. `effective = explicit grant ?? fold(events) ?? deployment default`, so an override survives restart by replay and two sessions never see each other's state. Workspace identity needs no event: the immutable `SessionHeader.cwd` recorded at creation is the root for every call in that session. The event stays log-only; before each request, the owner contributes the current fact to the full runtime-context snapshot, and the agent loop logs that snapshot as a sourced `user/message`.
+A runtime switch is one log-only `sandbox/mode` or `sandbox/root` event on the session it applies to — the switch IS its event, and nothing mutates that state out of band. `effective = explicit grant ?? fold(events) ?? deployment default`, so an override survives restart by replay and two sessions never see each other's state. Workspace identity needs no event: the immutable `SessionHeader.cwd` recorded at creation is the default root for every call in that session, and a `sandbox/root` override narrows it without changing that identity. The events stay log-only; before each request, the owner contributes the current facts to the full runtime-context snapshot, and the agent loop logs that snapshot as a sourced `user/message`.
 
 ### Model-visible text
 
@@ -87,7 +91,7 @@ The `sandbox:policy` contribution states the mode's capability-neutral file-effe
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: `SandboxPolicyService`, `Config` schema, policy resolution and context contribution |
-| [`src/session-mode.ts`](src/session-mode.ts) | The `sandbox/mode` event, its fold, and the write path |
+| [`src/session-mode.ts`](src/session-mode.ts) | The `sandbox/mode` and `sandbox/root` events, their folds, and the write paths |
 
 </details>
 

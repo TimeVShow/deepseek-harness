@@ -379,10 +379,17 @@ class GraphRun {
     let child: SubagentActivation | undefined
     try {
       const agentOptions = agentOptionsOf(template)
+      /* A deployment with the sandbox policy confines every worker to its own
+         iteration directory, so upstream deliverables stay read-only. Without
+         that service the deployment has no confined writes at all, and naming
+         a root would only make the start fail. */
+      const sandboxRoot = this.ctx.get('sandboxPolicy') === undefined ? undefined : dir
       child = await this.ctx.subagents.startActivation({
         provider: this.settings.provider,
         label: this.nodeName(node),
         request: {
+          cwd: dir,
+          ...sandboxRoot === undefined ? {} : { sandboxRoot },
           prompt: [{ type: 'text', text: prompt }],
           parent: this.controller.parent,
           ...agentOptions === undefined ? {} : { agentOptions },
@@ -435,7 +442,8 @@ class GraphRun {
       parent: this.controller.parent,
       title: this.nodeName(node),
       prompt,
-      cwd: this.workspaceRoot(),
+      workspace: this.workspaceRoot(),
+      cwd: dir,
       route: conversationRoute(this.ctx.agentDefaultModel.currentSelection(), template),
       signal: this.signal,
       seat: this.seat,

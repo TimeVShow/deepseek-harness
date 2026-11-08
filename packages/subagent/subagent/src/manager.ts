@@ -86,6 +86,8 @@ type MaterializeInputs = MaterializeBase & (
     create?: {
       /** Absolute initial directory captured before provider preparation. */
       cwd: string
+      /** Explicit `workspace-write` boundary the caller requested, when one was named. */
+      sandboxRoot?: string | undefined
       seed: readonly SessionEvent[] | undefined
       meta: NonNullable<CreateAgentOptions['meta']>
       /** Exact parent-log prefix length inside {@link seed}. */
@@ -441,6 +443,7 @@ export class SubagentManager {
           parent,
           create: {
             cwd,
+            sandboxRoot: request.sandboxRoot,
             seed,
             meta: childSessionMeta(parent, childDepth, prepared.seed !== undefined, request.agentPreset),
             inheritedEventCount,
@@ -889,6 +892,13 @@ export class SubagentManager {
           }
           child.session.append('subagent/descriptor', create.descriptor)
           appendDelegatedPolicyOverrides(child.session, create.delegatedPolicies)
+          if (create.sandboxRoot !== undefined) {
+            const sandboxPolicy = childCtx.get('sandboxPolicy')
+            if (sandboxPolicy === undefined) {
+              throw new Error('local subagents require the sandbox-policy service to scope a child sandbox root')
+            }
+            sandboxPolicy.setRoot(child.session, create.sandboxRoot)
+          }
           const workingDirectory = childCtx.get('workingDirectory')
           if (workingDirectory === undefined) throw new Error('local subagents require the working-directory service')
           await workingDirectory.set(child, create.cwd, inputs.signal)

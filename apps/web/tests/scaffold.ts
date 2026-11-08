@@ -315,6 +315,12 @@ export interface LaunchOptions {
   /** Fixed JSON-quoted workspace path length for compaction estimates; omitted values use the ordinary prefix. */
   workspacePathLength?: number
   /**
+   * Parent directory the scaffold's temp workspace is created under; omitted
+   * uses the system temp directory. A HOME-based parent keeps the workspace
+   * outside the platform temp grants, so a sandbox write denial is observable.
+   */
+  workspaceParentDirectory?: string
+  /**
    * Optional product overlay applied after the shipped Web surface and before
    * the scaffold's hermetic test patches, matching the launcher's `--patch`
    * ordering.
@@ -517,7 +523,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       process.env.DEEPSEEK_API_KEY = originalDeepSeekCredential
     }
   }
-  const workspaceParent = await realpath(tmpdir())
+  const workspaceParent = await realpath(options.workspaceParentDirectory ?? tmpdir())
   let workspacePrefix = 'dsh-web-e2e-ws-'
   if (options.workspacePathLength !== undefined) {
     // mkdtemp appends six characters; JSON quoting is part of the runtime-context text.

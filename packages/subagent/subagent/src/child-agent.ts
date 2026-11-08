@@ -227,6 +227,12 @@ export interface DelegatedPolicyOverrides {
   /** The parent session's explicit sandbox-mode override, or `undefined` without one. */
   readonly sandboxMode: SandboxMode | undefined
   /**
+   * The parent session's explicit sandbox-root override, or `undefined`
+   * without one: a child must never widen a parent that already narrowed its
+   * writes to a subdirectory.
+   */
+  readonly sandboxRoot: string | undefined
+  /**
    * `'never'` whenever the approval capability is composed, `undefined`
    * otherwise: a delegated child acts only within the sandbox scope fixed at
    * delegation, so its asks are rejected deterministically.
@@ -239,17 +245,19 @@ export interface DelegatedPolicyOverrides {
  * the child start's first await: a later parent switch belongs to the
  * parent's future, not to this child. Auto and Full access identities are
  * inherited only through the in-process DSH path so either can replace a stale
- * same-bundle fork value. Only the parent session's explicit sandbox override
- * is captured — never deployment defaults or one-shot grants — and the approval
+ * same-bundle fork value. Only the parent session's explicit sandbox overrides
+ * are captured — never deployment defaults or one-shot grants — and the approval
  * policy is pinned to `'never'` regardless of the parent's own policy.
  * @param parent - the delegating parent agent.
- * @returns the sandbox override (or `undefined` without one) and the approval pin.
+ * @returns the sandbox overrides (or `undefined` without them) and the approval pin.
  */
 export function captureDelegatedPolicyOverrides(parent: Agent): DelegatedPolicyOverrides {
   const preset = parent.ctx.get('permissionPresets')?.current(parent.session)
+  const sandboxPolicy = parent.ctx.get('sandboxPolicy')
   return {
     permissionPreset: preset === 'auto' || preset === 'danger-full-access' ? preset : undefined,
-    sandboxMode: parent.ctx.get('sandboxPolicy')?.overrideOf(parent.session),
+    sandboxMode: sandboxPolicy?.overrideOf(parent.session),
+    sandboxRoot: sandboxPolicy?.scopedRootOf(parent.session),
     approvalPolicy: parent.ctx.get('approval') === undefined ? undefined : 'never',
   }
 }
@@ -269,6 +277,9 @@ export function appendDelegatedPolicyOverrides(
 ): void {
   if (overrides.sandboxMode !== undefined) {
     childSession.append('sandbox/mode', { mode: overrides.sandboxMode, source: 'delegation' })
+  }
+  if (overrides.sandboxRoot !== undefined) {
+    childSession.append('sandbox/root', { root: overrides.sandboxRoot, source: 'delegation' })
   }
   if (overrides.approvalPolicy !== undefined) {
     childSession.append('approval/policy', { policy: overrides.approvalPolicy, source: 'delegation' })

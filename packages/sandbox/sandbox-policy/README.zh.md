@@ -56,6 +56,10 @@ kind: "package-reference"
 
 会话的模式可以在运行时通过 UI 策略控件或显式切换来更改；切换记录在会话日志中，并在该会话的下一次受限调用时生效。切换通过回放跨重启保留，每个会话保持自己的模式——两个会话绝不会看到彼此状态。切换后的会话继续以不可变的工作区 cwd 作为写入边界。
 
+### 收窄会话的可写根目录
+
+会话可以通过 `setRoot` 把 `workspace-write` 根目录收窄到某个子目录。收窄记录为一条 `sandbox/root` 事件，并在该会话的下一次受限调用时生效。它通过回放跨重启保留、只作用于该会话，并保留不可变的 header cwd 作为会话的工作区标识。被委派的子会话继承该覆盖，因此被限制在子目录内的 agent 无法通过派生子 agent 扩大自己的范围。
+
 ### 失败与恢复
 
 无效的配置模式会在插件加载时被拒绝，因此拼写错误会导致显式报错，而不是静默改变策略。没有 cwd 的会话与无 agent 调用回退到配置的工作区根目录；带已批准显式模式的调用只在该次调用中使用该模式。
@@ -72,11 +76,11 @@ kind: "package-reference"
 
 ### 解析优先级
 
-`resolve({ session, mode })` 返回一份完整的逐调用策略：已批准的显式模式优先于会话最后一条 `sandbox/mode` 事件，后者又优先于部署默认值。会话的不可变 `cwd` 提供工作区根目录；否则使用配置的回退值。执行环境中的绝对路径写法保持不变。执行限制的提供方在自己的文件系统上规范化根目录，因此远端 `symlink/..` 路径绝不会在 Harness 主机上解析。
+`resolve({ session, mode })` 返回一份完整的逐调用策略：已批准的显式模式优先于会话最后一条 `sandbox/mode` 事件，后者又优先于部署默认值。会话最后一条 `sandbox/root` 事件提供工作区根目录，否则使用其不可变 `cwd`；再否则使用配置的回退值。执行环境中的绝对路径写法保持不变。执行限制的提供方在自己的文件系统上规范化根目录，因此远端 `symlink/..` 路径绝不会在 Harness 主机上解析。
 
 ### 逐会话存储
 
-运行时切换是在对应会话日志中追加的一条仅写入日志的 `sandbox/mode` 事件——切换本身就是事件，任何机制都不会在带外修改模式状态。`effective = explicit grant ?? fold(events) ?? deployment default`，因此覆盖通过回放跨重启保留，两个会话也绝不会看到彼此状态。工作区标识无需事件：创建时记录的不可变 `SessionHeader.cwd` 是该会话每次调用使用的根。事件仍只进入日志；在每次请求前，归属方会把当前事实贡献给完整运行时上下文快照，agent loop（智能体循环）将该快照记录为一条带来源的 `user/message`。
+运行时切换是在对应会话日志中追加的一条仅写入日志的 `sandbox/mode` 或 `sandbox/root` 事件——切换本身就是事件，任何机制都不会在带外修改该状态。`effective = explicit grant ?? fold(events) ?? deployment default`，因此覆盖通过回放跨重启保留，两个会话也绝不会看到彼此状态。工作区标识无需事件：创建时记录的不可变 `SessionHeader.cwd` 是该会话每次调用的默认根，而 `sandbox/root` 覆盖会在不改变该标识的前提下收窄它。事件仍只进入日志；在每次请求前，归属方会把当前事实贡献给完整运行时上下文快照，agent loop（智能体循环）将该快照记录为一条带来源的 `user/message`。
 
 ### 模型可见文本
 
@@ -87,7 +91,7 @@ kind: "package-reference"
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：`SandboxPolicyService`、`Config` schema、策略解析与上下文贡献 |
-| [`src/session-mode.ts`](src/session-mode.ts) | `sandbox/mode` 事件、其 fold 与写入路径 |
+| [`src/session-mode.ts`](src/session-mode.ts) | `sandbox/mode` 与 `sandbox/root` 事件、其 fold 与写入路径 |
 
 </details>
 

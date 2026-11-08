@@ -6,8 +6,8 @@
  * records, Session identity, workspace membership, and node handoffs.
  */
 
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
@@ -17,7 +17,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import type { FlowId, FlowRun } from '@deepseek-ai/dsh-experimental-agent-flow'
 import type {} from '@deepseek-ai/dsh-experimental-agent-flow'
-import { launchWebScaffold, acknowledgeReloadConnectionLoss, watchConsole, type WebScaffold } from './scaffold.ts'
+import { launchWebScaffold, acknowledgeReloadConnectionLoss, readPersistedEvents, watchConsole, type WebScaffold } from './scaffold.ts'
 import { newEnglishPage } from './support.ts'
 
 declare global {
@@ -41,6 +41,7 @@ describe('web e2e: agent-flow L1 identity', () => {
   let flowB: FlowId
   let flowC: FlowId
   let flowD: FlowId
+  let flowE: FlowId
   const pages: Page[] = []
   let tripwires: ReturnType<typeof watchConsole>[] = []
   const hostFailures: unknown[] = []
@@ -59,6 +60,9 @@ describe('web e2e: agent-flow L1 identity', () => {
       extraOverlayPath: OVERLAY,
       extraInstallAnchors: INSTALL_ANCHORS,
       deepSeekMissingCredential: true,
+      // A HOME-based workspace sits outside the sandbox's platform temp grants,
+      // so E26 observes a real workspace-write denial on an upstream delivery.
+      workspaceParentDirectory: homedir(),
     })
     const workspace = await scaffold.ctx.workspaceRegistry.create(scaffold.workspaceCwd)
     primaryWorkspace = String(workspace.id)
@@ -80,6 +84,7 @@ describe('web e2e: agent-flow L1 identity', () => {
     const qa = await template('QA', 'qa', 'deepseek-flash')
     const summary = await template('Summary', 'summary', 'deepseek-v4-pro')
     const clarify = await template('Clarifier', 'clarify', 'deepseek-v4-pro')
+    const sandboxReviewer = await template('Sandbox reviewer', 'sandboxcheck', 'deepseek-flash')
 
     const brief = {
       name: 'Brief flow',
@@ -171,10 +176,23 @@ describe('web e2e: agent-flow L1 identity', () => {
         { kind: 'execution', from: 'checked', to: 'end' },
       ],
     })).id
-    // The progress card needs a tool execution that lasts long enough to
-    // paint its Running tools stage; a millisecond tool settles between two
-    // client commits and the stage never renders. The scripted provider calls
-    // this tool from the E17 clarification round.
+    flowE = (await scaffold.ctx.agentFlows.saveFlow({
+      name: 'Sandbox entry flow',
+      nodes: [
+        { kind: 'start', id: 'start' },
+        { kind: 'agent', id: 'reviewer', templateId: sandboxReviewer.id, instruction: 'Review the upstream file.', interactive: true },
+        { kind: 'end', id: 'end' },
+      ],
+      edges: [
+        { kind: 'execution', from: 'start', to: 'reviewer' },
+        { kind: 'input', from: 'start', to: 'reviewer' },
+        { kind: 'execution', from: 'reviewer', to: 'end' },
+      ],
+    })).id
+    // The progress card needs a tool execution that lasts long enough to paint
+    // its Running tools stage; a millisecond tool settles between two client
+    // commits and the stage never renders. The scripted provider calls this
+    // tool from the E17 clarification round.
     scaffold.ctx.tools.register(defineContentToolFixture({
       name: 'slow_echo',
       description: 'Echo the text after a short delay (acceptance-lane fixture).',
@@ -485,6 +503,66 @@ describe('web e2e: agent-flow L1 identity', () => {
     await request.focus()
     await page.keyboard.press('Enter')
     await expect.poll(async () => await results.getByText('E24-P1SS', { exact: false }).count()).toBeGreaterThan(0)
+  }, 240_000)
+
+  // E26: a downstream node can read upstream deliverables and copy them into
+  // its own directory, but the sandbox must refuse writes through Bash.
+  it('E26: a downstream node cannot overwrite an upstream delivered file', async () => {
+    const sQ = await createSession('l1-e26-q')
+    const page = await openPage(sQ)
+    await startFlowViaComposer(page, 'Brief flow', '[CASE:E26-Q1TT] [SANDBOX] Create the upstream file.')
+    const run = await waitForRun(String(sQ), 'E26-Q1TT')
+    const writer = run.nodeRuns.find(entry => entry.nodeId === 'writer')!
+    const checker = run.nodeRuns.find(entry => entry.nodeId === 'checker')!
+    expect(writer.status).toBe('succeeded')
+    expect(checker.status).toBe('succeeded')
+    // The node Session's own directory is its sandbox root, so the upstream
+    // delivery written by the writer stays outside the checker's write scope.
+    const events = await readPersistedEvents(scaffold, checker.agentSessionId!)
+    expect(events.filter(event => event.type === 'sandbox/root').map(event => event.data))
+      .toEqual([{ root: checker.dir }])
+    const upstream = join(writer.dir!, 'original.txt')
+    const results = events
+      .filter(event => event.type === 'tool/result')
+      .map(event => JSON.stringify(event.data))
+    // Six refused writes: same-byte overwrite, rewrite, delete, rename, a
+    // temp-file replacement, and a write through a symlink in the checker's own
+    // directory. Each reports STEP-DENIED only when the shell could not perform
+    // it, so a missing marker would mean the write went through.
+    expect(results).toHaveLength(6)
+    expect(results.every(text => text.includes('STEP-DENIED'))).toBe(true)
+    expect(await readFile(upstream, 'utf8')).toBe('upstream-original')
+    // The upstream directory keeps exactly its original entry: no rename, no
+    // replacement.
+    expect(await readdir(writer.dir!)).toEqual(['original.txt'])
+  }, 240_000)
+
+  // E27: an interactive node is a root Session, not a subagent child; its own
+  // directory must still be the write boundary. An interactive node is an
+  // execution entry, so the upstream file already exists in the workspace.
+  it('E27: an interactive node cannot overwrite an upstream delivered file', async () => {
+    const sR = await createSession('l1-e27-r')
+    const upstream = join(scaffold.workspaceCwd, 'upstream.txt')
+    await writeFile(upstream, 'upstream-original')
+    const page = await openPage(sR)
+    await startFlowViaComposer(
+      page,
+      'Sandbox entry flow',
+      `[CASE:E27-R1BB] [SANDBOX-ENTRY] [UPSTREAM:${upstream}] Review the upstream file.`,
+    )
+    const run = await waitForRun(String(sR), 'E27-R1BB')
+    expect(String(run.flowId)).toBe(String(flowE))
+    const reviewer = run.nodeRuns.find(entry => entry.nodeId === 'reviewer')!
+    expect(reviewer.status).toBe('succeeded')
+    const events = await readPersistedEvents(scaffold, reviewer.agentSessionId!)
+    expect(events.filter(event => event.type === 'sandbox/root').map(event => event.data))
+      .toEqual([{ root: reviewer.dir }])
+    const results = events
+      .filter(event => event.type === 'tool/result')
+      .map(event => JSON.stringify(event.data))
+    expect(results).toHaveLength(6)
+    expect(results.every(text => text.includes('STEP-DENIED'))).toBe(true)
+    expect(await readFile(upstream, 'utf8')).toBe('upstream-original')
   }, 240_000)
 
   it('E05: one Session runs two Flows and returns to ordinary chat', async () => {

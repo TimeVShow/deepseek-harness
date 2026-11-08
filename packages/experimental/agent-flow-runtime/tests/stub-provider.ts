@@ -69,6 +69,7 @@ export class StubProvider implements SubagentProvider {
     agentPreset: false,
     outputSchema: true,
     depthLimit: true,
+    sandboxRoot: true,
   }
   readonly inheritsParentContext = false
 

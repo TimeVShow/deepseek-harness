@@ -23,6 +23,13 @@ interface SubagentCapabilities {
   readonly agentPreset: boolean
   readonly outputSchema: boolean
   readonly depthLimit: boolean
+  /**
+   * Supports confining the child's file effects to an explicit
+   * {@link SubagentStartRequest.sandboxRoot}. Optional: absent means the same
+   * refusal as `false`, so a provider that cannot honor a named root (an
+   * out-of-process one) rejects the request instead of silently widening it.
+   */
+  readonly sandboxRoot?: boolean
 }
 ```
 
@@ -70,6 +77,14 @@ interface SubagentActivation {
 interface SubagentStartRequest {
   /** Initial child directory; relative paths resolve against the parent's current directory. Omitted inherits that directory at start. */
   readonly cwd?: string
+  /**
+   * Absolute `workspace-write` boundary for an in-process child, written to its
+   * session log before the first request as a `sandbox/root` override. Omitted
+   * inherits the parent's effective boundary. Requires
+   * {@link SubagentCapabilities.sandboxRoot}; an out-of-process provider owns
+   * its own confinement and cannot honor it.
+   */
+  readonly sandboxRoot?: string
   /**
    * Independent preset id; omission joins the parent's current generation.
    * Requires a provider with `capabilities.agentPreset` that does not inherit

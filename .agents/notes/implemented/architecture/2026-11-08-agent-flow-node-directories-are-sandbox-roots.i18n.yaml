@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-11-08-agent-flow-node-directories-are-sandbox-roots.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-11-08-agent-flow-node-directories-are-sandbox-roots.md
+/agent-note-agent-flow-node-directories-are-sandbox-roots:
+  en: 6ce7af24828f69f1
+  zh: 1f5e6397ae4c4ffa
+/agent-note-agent-flow-node-directories-are-sandbox-roots/problem:
+  en: 36f42fa5a9b2b120
+  zh: c05ab6e79bc87c0d
+/agent-note-agent-flow-node-directories-are-sandbox-roots/decision:
+  en: b647d711fa7a27be
+  zh: 4684f60bc5275d5c
+/agent-note-agent-flow-node-directories-are-sandbox-roots/verification:
+  en: 9f64fa45eba098ca
+  zh: df480cc59b3b1db9
+/agent-note-agent-flow-node-directories-are-sandbox-roots/alternatives-considered:
+  en: 074705a03f309284
+  zh: 6b65e3cdd8dde1c6
+/agent-note-agent-flow-node-directories-are-sandbox-roots/consequences:
+  en: b702f0ebd8a35e6c
+  zh: fe49c8cd64b9e023

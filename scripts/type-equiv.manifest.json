@@ -2766,6 +2766,21 @@
       "doc": "docs/subsystems/forge.md",
       "symbol": "ForgeReviewResult",
       "source": "packages/experimental/forge/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/agent-flow.md",
+      "symbol": "FlowStartRequest",
+      "source": "packages/experimental/agent-flow/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/agent-flow.md",
+      "symbol": "FlowRunController",
+      "source": "packages/experimental/agent-flow/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/agent-flow.md",
+      "symbol": "FlowExecutor",
+      "source": "packages/experimental/agent-flow/src/types.ts"
     }
   ]
 }

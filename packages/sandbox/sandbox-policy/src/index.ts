@@ -2,10 +2,10 @@
  * The sandbox POLICY home (`ctx.sandboxPolicy`): the single owner of the
  * deployment's sandbox fallbacks plus per-session resolution: the file-effect
  * {@link SandboxMode}, the `workspace-write` root, the explicit extra writable
- * directories, and the override kit (the `sandbox/mode` event, its fold, and
- * its write path; the fold is the `sandboxMode` session-projection unit
- * registered here, while the event and write path come from
- * `./session-mode.ts`).
+ * directories, and the override kit (the `sandbox/mode` and `sandbox/root`
+ * events, their folds, and their write paths; the folds are the `sandboxMode`
+ * and `sandboxRoot` session-projection units registered here, while the events
+ * and write paths come from `./session-mode.ts`).
  * Before each agent request, the owner also contributes the resolved policy to
  * the cache-safe runtime-context snapshot. The agent loop logs that snapshot as
  * model history, so replay reconstructs the same mode and root the enforcing
@@ -31,7 +31,8 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 
-export { SANDBOX_MODES, setSandboxMode } from './session-mode.ts'
+export { SANDBOX_MODES, setSandboxMode, setSandboxRoot } from './session-mode.ts'
+import { setSandboxRoot } from './session-mode.ts'
 
 /** Preserve execution-world spelling; enforcing providers resolve filesystem identity on their host. */
 function resolveWorkspaceRoot(path: string): string {
@@ -112,18 +113,23 @@ export interface Config {
 
 /** Inputs that select the sandbox policy for one capability call. */
 export interface SandboxPolicyRequest {
-  /** Calling session; its immutable cwd becomes the workspace boundary. */
+  /** Calling session; its root override or immutable cwd becomes the workspace boundary. */
   session?: Session
   /** Explicit approved mode override, which outranks session policy. */
   mode?: SandboxMode
 }
 
-/** The sandbox-mode projection's state schema (state equals the public shape). */
+/**
+ * The sandbox-mode and sandbox-root projections' state schema (state equals the
+ * public shape).
+ */
 const sandboxModeStateSchema = zod.union([
   zod.literal('read-only'),
   zod.literal('workspace-write'),
   zod.literal('danger-full-access'),
 ]).nullable()
+
+const sandboxRootStateSchema = zod.string().min(1).refine(isAbsolute).nullable()
 
 /**
  * The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment
@@ -150,6 +156,7 @@ export class SandboxPolicyService extends Service {
   /** The frozen extra writable directories shared by every resolved policy, or `undefined` for none. */
   readonly additionalWritableRoots: readonly string[] | undefined
   private sandboxModeProjectionHandle!: ProjectionHandle<SandboxMode | null>
+  private sandboxRootProjectionHandle!: ProjectionHandle<string | null>
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'sandboxPolicy')
@@ -170,6 +177,13 @@ export class SandboxPolicyService extends Service {
       init: () => null,
       apply: (state, event) => (event.type === 'sandbox/mode' ? event.data.mode : state),
     })
+    this.sandboxRootProjectionHandle = await ctx.sessionProjections.register({
+      key: 'sandboxRoot',
+      stateVersion: 1,
+      stateSchema: sandboxRootStateSchema,
+      init: () => null,
+      apply: (state, event) => (event.type === 'sandbox/root' ? event.data.root : state),
+    })
 
     ctx.inject(['systemPrompt'], (scope: Context) => {
       scope.systemPrompt.context({
@@ -188,9 +202,9 @@ export class SandboxPolicyService extends Service {
   /**
    * Resolve the complete policy for one capability call. An approved explicit
    * mode outranks the session's last `sandbox/mode` event, which outranks the
-   * deployment default. A session cwd is its workspace-write boundary; the
-   * configured root is the fallback for agentless calls and sessions without a
-   * cwd.
+   * deployment default. A session's last `sandbox/root` event outranks its
+   * immutable cwd as the `workspace-write` boundary; the configured root is the
+   * fallback for agentless calls and sessions without either.
    * @param request - optional session and approved mode override.
    * @returns the fully resolved per-call mode and absolute workspace root.
    */
@@ -198,10 +212,43 @@ export class SandboxPolicyService extends Service {
     const { session } = request
     return {
       mode: request.mode ?? (session === undefined ? undefined : this.overrideOf(session)) ?? this.defaultMode,
-      workspaceRoot: resolveWorkspaceRoot(session?.header.cwd ?? this.workspaceRoot),
+      workspaceRoot: session === undefined ? this.workspaceRoot : resolveWorkspaceRoot(this.workspaceRootOf(session)),
       ...this.additionalWritableRoots === undefined ? {} : { additionalWritableRoots: this.additionalWritableRoots },
       ...session === undefined ? {} : { sessionId: session.id },
     }
+  }
+
+  /**
+   * The session's effective `workspace-write` boundary: its last
+   * `sandbox/root` override, else its immutable header cwd, else the
+   * deployment fallback.
+   * @param session - session whose boundary is requested.
+   * @returns the absolute root every confined write in this session must stay under.
+   */
+  workspaceRootOf(session: Session): string {
+    return this.sandboxRootProjectionHandle.stateOf(session) ?? session.header.cwd ?? this.workspaceRoot
+  }
+
+  /**
+   * Read the session's explicit root override without applying the header or
+   * deployment fallback, so a delegation can seed only an override the parent
+   * actually recorded.
+   * @param session - session whose override is requested.
+   * @returns the last logged root, or `undefined` without one.
+   */
+  scopedRootOf(session: Session): string | undefined {
+    return this.sandboxRootProjectionHandle.stateOf(session) ?? undefined
+  }
+
+  /**
+   * Narrow this session's `workspace-write` boundary for every later confined
+   * call. Delegated children inherit the same root, so an agent confined to a
+   * subdirectory cannot widen its own scope by spawning.
+   * @param session - the session the override belongs to.
+   * @param root - the absolute directory writes must stay under.
+   */
+  setRoot(session: Session, root: string): void {
+    setSandboxRoot(session, root)
   }
 
   /**

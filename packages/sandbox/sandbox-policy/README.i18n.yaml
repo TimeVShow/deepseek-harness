@@ -26,6 +26,9 @@
 /deepseek-ai-dsh-sandbox-policy/use-this-package/switching-a-session-s-mode:
   en: 957d72691e470e5c
   zh: c22a3a750af0e4a3
+/deepseek-ai-dsh-sandbox-policy/use-this-package/narrowing-a-session-s-writable-root:
+  en: 43bfb75c7ebfa78d
+  zh: e770743f48f576ce
 /deepseek-ai-dsh-sandbox-policy/use-this-package/failures-and-recovery:
   en: 9cef5f64a050f468
   zh: 5dc42c148b2c902d
@@ -33,17 +36,17 @@
   en: 2d560aa6681fcfb8
   zh: e1c6361a6fa40c63
 /deepseek-ai-dsh-sandbox-policy/understand-the-implementation/resolution-precedence:
-  en: f1f38b10c23947d2
-  zh: 7a591e743d6793f5
+  en: 9973afcecb501212
+  zh: 82956779ee7fb786
 /deepseek-ai-dsh-sandbox-policy/understand-the-implementation/the-per-session-store:
-  en: d13dabff02f2acfd
-  zh: f593888b4ffddf36
+  en: eadc640f82309263
+  zh: 6c3f3c616af6df40
 /deepseek-ai-dsh-sandbox-policy/understand-the-implementation/model-visible-text:
   en: af0d19c6de17a272
   zh: d90e538f9ac85b77
 /deepseek-ai-dsh-sandbox-policy/understand-the-implementation/source-map:
-  en: cc7dd675c9915f7d
-  zh: d719c4f9de39873a
+  en: 128fd04cba7a7653
+  zh: 4d7dd62d2f5281ef
 /deepseek-ai-dsh-sandbox-policy/further-exploration:
   en: 7b110e18967f2754
   zh: 823c261edeae750a

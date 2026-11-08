@@ -55,7 +55,8 @@ function completedTurnPrefix(parent: Agent): SessionEvent[] {
 /**
  * The fork provider. Supports `depthLimit` and `outputSchema` (via the shared
  * in-process structured runtime), `agentOptions` (merged over the parent
- * route). The child inherits its parent's preset composition.
+ * route), and `sandboxRoot` (the child's own file-effect boundary). The child
+ * inherits its parent's preset composition.
  */
 class ForkInProcessProvider implements SubagentProvider {
   readonly capabilities: SubagentCapabilities = {
@@ -63,6 +64,7 @@ class ForkInProcessProvider implements SubagentProvider {
     agentPreset: false,
     outputSchema: true,
     depthLimit: true,
+    sandboxRoot: true,
   }
   // Context contract: a forked child IS seeded with the parent's completed-turn prefix.
   readonly inheritsParentContext = true

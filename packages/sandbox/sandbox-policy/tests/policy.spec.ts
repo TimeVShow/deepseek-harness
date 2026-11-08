@@ -293,3 +293,42 @@ describe('the sandbox/mode session kit', () => {
     expect(modeEvents[0]?.data).toEqual({ mode: 'danger-full-access' })
   })
 })
+
+describe('the sandbox/root session kit', () => {
+  it('narrows the resolved root while leaving the header cwd as the session identity', async () => {
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
+    const active = session('sess-scoped', '/projects/current')
+    ctx.sandboxPolicy.setRoot(active, '/projects/current/.dsh/flows/run/00-node')
+
+    expect(ctx.sandboxPolicy.resolve({ session: active })).toEqual({
+      mode: 'workspace-write',
+      workspaceRoot: '/projects/current/.dsh/flows/run/00-node',
+      sessionId: 'sess-scoped',
+    })
+    expect(ctx.sandboxPolicy.workspaceRootOf(active)).toBe('/projects/current/.dsh/flows/run/00-node')
+    expect(ctx.sandboxPolicy.scopedRootOf(active)).toBe('/projects/current/.dsh/flows/run/00-node')
+    expect(active.header.cwd).toBe('/projects/current')
+  })
+
+  it('replays the last root override from the session log and reports none without an event', async () => {
+    const ctx = await mounted({ mode: 'workspace-write' })
+    const plain = session('sess-plain', '/projects/plain')
+    expect(ctx.sandboxPolicy.scopedRootOf(plain)).toBeUndefined()
+
+    const active = session('sess-replayed', '/projects/replayed')
+    ctx.sandboxPolicy.setRoot(active, '/projects/replayed/one')
+    ctx.sandboxPolicy.setRoot(active, '/projects/replayed/two')
+    const resumed = Session.create(active.id, active.snapshotEvents(), active.header)
+
+    expect(ctx.sandboxPolicy.resolve({ session: resumed }).workspaceRoot).toBe('/projects/replayed/two')
+    expect(active.snapshotEvents().filter(event => event.type === 'sandbox/root')).toHaveLength(2)
+  })
+
+  it('rejects a relative root at the write path', async () => {
+    const ctx = await mounted()
+    const active = session('sess-relative-root')
+    expect(() => { ctx.sandboxPolicy.setRoot(active, 'relative/dir') })
+      .toThrow('sandbox-policy: sandbox root must be an absolute execution-world path')
+    expect(active.snapshotEvents().filter(event => event.type === 'sandbox/root')).toEqual([])
+  })
+})

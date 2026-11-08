@@ -1560,6 +1560,7 @@ describe('dsh-subagent-acp', () => {
       agentPreset: false,
       outputSchema: false,
       depthLimit: false,
+      sandboxRoot: false,
     })
   })
 

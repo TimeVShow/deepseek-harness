@@ -24,6 +24,7 @@ describe('NO_START_CAPABILITIES', () => {
       agentPreset: false,
       outputSchema: false,
       depthLimit: false,
+      sandboxRoot: false,
     })
     expect(Object.isFrozen(NO_START_CAPABILITIES)).toBe(true)
   })
