@@ -43,7 +43,7 @@ const LONG_MARKDOWN = [
 ].join('\n')
 
 /** Reply text for one assembled request; parallel-safe because it reads only the request. */
-function replyText(options, reviewCalls) {
+function replyText(options, reviewCalls, roleRounds) {
   const texts = []
   for (const message of options.messages ?? []) {
     if (typeof message.content === 'string') texts.push(message.content)
@@ -85,10 +85,65 @@ function replyText(options, reviewCalls) {
     reviewCalls.set(caseId, count)
     return { role, caseId, slow, text: `${role} on CASE:${caseId} round ${count}\nResult: ${count === 1 ? 'rework' : 'approved'}` }
   }
+  if (role === 'implement' && /\[ROUNDS\]/.test(joined)) {
+    const key = `${caseId}:implement`
+    const count = (roleRounds.get(key) ?? 0) + 1
+    roleRounds.set(key, count)
+    return { role, caseId, slow, text: `implement round ${count} for CASE:${caseId}` }
+  }
   if (role === 'writer' && /\[SANDBOX\]/.test(joined)) {
     return hasToolResult(options)
       ? { role, caseId, text: 'writer created the upstream file\n[SANDBOX-ATTACK]' }
       : { role, caseId, toolCall: { name: 'bash', args: { command: "printf 'upstream-original' > original.txt", description: 'Create the upstream file' } } }
+  }
+  if (role === 'filer' && /\[FILES\]/.test(joined)) {
+    const dir = /nowhere else:\n([^\n]+)/.exec(joined)?.[1]
+    const mark = /\[MARK:([^\]\n]+)\]/.exec(joined)?.[1] ?? 'A'
+    if (dir === undefined) return { role, caseId, text: 'filer could not locate its directory' }
+    const toolResults = (options.messages ?? []).filter(message => message.role === 'tool').length
+    if (toolResults === 0) {
+      return {
+        role,
+        caseId,
+        toolCall: {
+          name: 'write',
+          args: {
+            file_path: `${dir}/RESULT.md`,
+            content: `# RESULT ${mark}\n\nline two\nrun ${mark} line 3\nline four\n`,
+            description: 'Write the result document',
+          },
+        },
+      }
+    }
+    if (toolResults === 1) {
+      return {
+        role,
+        caseId,
+        toolCall: {
+          name: 'write',
+          args: {
+            file_path: `${dir}/结果 报告.md`,
+            content: `# 结果 ${mark}\n\n中文内容 ${mark}\n`,
+            description: 'Write the localized report',
+          },
+        },
+      }
+    }
+    if (toolResults === 2) {
+      return {
+        role,
+        caseId,
+        toolCall: {
+          name: 'write',
+          args: {
+            file_path: `${dir}/notes.txt`,
+            content: `line one\nline two\n${mark} line 3\nline four\n`,
+            description: 'Write the plain-text notes',
+          },
+        },
+      }
+    }
+    return { role, caseId, text: `wrote the result for ${mark}\n\n[line 3](./notes.txt:3)` }
   }
   if ((role === 'checker' || role === 'sandboxcheck') && /\[SANDBOX-(?:ATTACK|ENTRY)\]/.test(joined)) {
     const upstream = /\[UPSTREAM:([^\]\n]+)\]/.exec(joined)?.[1]
@@ -125,7 +180,12 @@ function replyText(options, reviewCalls) {
         : 'reviewer finished with the upstream file\nResult: done',
     }
   }
-  if (/\[LONG\]/.test(joined)) return { role, caseId, slow, text: LONG_MARKDOWN }
+  if (/\[LONG\]/.test(joined)) {
+    /* Downstream nodes only see handoffs, so a `[ROUNDS]` flow carries the
+       marker in the delivered text to give each implement round its own body. */
+    const rounds = /\[ROUNDS\]/.test(joined) ? '\n\n[ROUNDS]' : ''
+    return { role, caseId, slow, text: `${LONG_MARKDOWN}${rounds}` }
+  }
   return { role, caseId, text: `${role} handled CASE:${caseId}`, slow }
 }
 
@@ -134,6 +194,8 @@ const SLOW_DELTA_MS = 400
 
 export function apply(ctx) {
   const reviewCalls = new Map()
+  /** Per CASE and role request count for `[ROUNDS]` replies. */
+  const roleRounds = new Map()
   const released = new Set()
   const releaseWaiters = new Map()
   /** Model requests served per CASE; a node restart would add a request. */
@@ -175,7 +237,7 @@ export function apply(ctx) {
     signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('scripted slow aborted')) }, { once: true })
   })
   async function* stream(options, route) {
-    const reply = replyText(options, reviewCalls)
+    const reply = replyText(options, reviewCalls, roleRounds)
     requestCalls.set(reply.caseId, (requestCalls.get(reply.caseId) ?? 0) + 1)
     const routes = requestRoutes.get(reply.caseId) ?? []
     routes.push({ role: reply.role, provider: route.provider, model: route.model })

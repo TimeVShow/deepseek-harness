@@ -6,12 +6,12 @@
  * records, Session identity, workspace membership, and node handoffs.
  */
 
-import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
@@ -42,6 +42,7 @@ describe('web e2e: agent-flow L1 identity', () => {
   let flowC: FlowId
   let flowD: FlowId
   let flowE: FlowId
+  let flowF: FlowId
   const pages: Page[] = []
   let tripwires: ReturnType<typeof watchConsole>[] = []
   const hostFailures: unknown[] = []
@@ -85,6 +86,7 @@ describe('web e2e: agent-flow L1 identity', () => {
     const summary = await template('Summary', 'summary', 'deepseek-v4-pro')
     const clarify = await template('Clarifier', 'clarify', 'deepseek-v4-pro')
     const sandboxReviewer = await template('Sandbox reviewer', 'sandboxcheck', 'deepseek-flash')
+    const filer = await template('Filer', 'filer', 'deepseek-flash')
 
     const brief = {
       name: 'Brief flow',
@@ -187,6 +189,19 @@ describe('web e2e: agent-flow L1 identity', () => {
         { kind: 'execution', from: 'start', to: 'reviewer' },
         { kind: 'input', from: 'start', to: 'reviewer' },
         { kind: 'execution', from: 'reviewer', to: 'end' },
+      ],
+    })).id
+    flowF = (await scaffold.ctx.agentFlows.saveFlow({
+      name: 'Files flow',
+      nodes: [
+        { kind: 'start', id: 'start' },
+        { kind: 'agent', id: 'filer', templateId: filer.id, instruction: 'Write the result files.' },
+        { kind: 'end', id: 'end' },
+      ],
+      edges: [
+        { kind: 'execution', from: 'start', to: 'filer' },
+        { kind: 'input', from: 'start', to: 'filer' },
+        { kind: 'execution', from: 'filer', to: 'end' },
       ],
     })).id
     // The progress card needs a tool execution that lasts long enough to paint
@@ -466,7 +481,7 @@ describe('web e2e: agent-flow L1 identity', () => {
   it('E24: the results page hides condition nodes and renders the deliverable in both layouts', async () => {
     const sP = await createSession('l1-e24-p')
     const page = await openPage(sP)
-    await startFlowViaComposer(page, 'Design flow', '[CASE:E24-P1SS] [LONG] Design the results page probe.')
+    await startFlowViaComposer(page, 'Design flow', '[CASE:E24-P1SS] [LONG] [ROUNDS] Design the results page probe.')
     const run = await waitForRun(String(sP), 'E24-P1SS')
     const card = page.locator('[data-flow-progress]')
     await card.waitFor({ timeout: 30_000 })
@@ -493,6 +508,13 @@ describe('web e2e: agent-flow L1 identity', () => {
     const earlier = results.locator('[data-node="implement"]')
       .getByRole('button', { name: /1 earlier rounds/ })
     await earlier.waitFor({ state: 'visible', timeout: 30_000 })
+    // Expanding the history proves each round keeps its own handoff text, not
+    // the latest round's body repeated.
+    await earlier.click()
+    const implement = results.locator('[data-node="implement"]')
+    await implement.getByRole('button', { name: /Round 1/ }).click()
+    await expect.poll(async () => await implement.innerText()).toContain('implement round 1 for CASE:NO-CASE')
+    await expect.poll(async () => await implement.innerText()).toContain('implement round 2 for CASE:NO-CASE')
 
     // The narrow layout and the dark theme keep the request toggle usable from
     // the keyboard.
@@ -882,6 +904,183 @@ describe('web e2e: agent-flow L1 identity', () => {
     expect(checkerSnapshot).toMatchObject({ templateId: routeChecker.id })
     expect((await scaffold.ctx.agentFlows.readFlow(routed.id)).nodes
       .find(node => node.kind === 'agent' && node.id === 'checker')).toMatchObject({ templateId: replacement.id })
+  }, 240_000)
+
+  // E25: an invalid model route fails where it is determinable, in the page,
+  // without spending a model request; correcting the template makes the next
+  // submission run exactly its nodes, and ordinary chat still works.
+  it('E25: an unknown provider fails visibly and a corrected route runs once', async () => {
+    const broken = await scaffold.ctx.agentFlows.saveTemplate({
+      name: 'Broken route',
+      persona: 'ROLE:writer Broken route.',
+      provider: 'missing-provider',
+      model: 'missing-model',
+    })
+    await scaffold.ctx.agentFlows.saveFlow({
+      name: 'Broken route flow',
+      nodes: [
+        { kind: 'start', id: 'start' },
+        { kind: 'agent', id: 'work', templateId: broken.id, instruction: 'Do the work.' },
+        { kind: 'end', id: 'end' },
+      ],
+      edges: [
+        { kind: 'execution', from: 'start', to: 'work' },
+        { kind: 'input', from: 'start', to: 'work' },
+        { kind: 'execution', from: 'work', to: 'end' },
+      ],
+    })
+    const sT = await createSession('l1-e25-t')
+    const page = await openPage(sT)
+    await startFlowViaComposer(page, 'Broken route flow', '[CASE:E25-T1AA] Do the work.')
+
+    const failed = await waitForRun(String(sT), 'E25-T1AA', 'failed')
+    const work = failed.nodeRuns.find(entry => entry.nodeId === 'work')!
+    expect(work.status).toBe('failed')
+    // The route is unserviceable, so the wire never sees a request for it.
+    expect(callsFor('E25-T1AA')).toBe(0)
+    expect(work.error ?? failed.error ?? '').toContain('missing-provider')
+
+    // The page shows the reason, not just a red dot.
+    const card = page.locator('[data-flow-progress]')
+    await card.waitFor({ timeout: 30_000 })
+    await card.getByRole('button', { name: 'View full flow', exact: true }).click()
+    const results = page.locator(`[data-run-results="${String(failed.id)}"]`)
+    await results.waitFor({ timeout: 30_000 })
+    await expect.poll(async () => await results.innerText(), { timeout: 30_000 }).toContain('missing-provider')
+
+    // Correcting the template is the only change; the next submission reaches
+    // the single expected node exactly once.
+    await scaffold.ctx.agentFlows.saveTemplate({
+      id: broken.id,
+      name: broken.name,
+      persona: broken.persona,
+      provider: 'deepseek-official',
+      model: 'deepseek-flash',
+    })
+    const page2 = await openPage(sT)
+    await startFlowViaComposer(page2, 'Broken route flow', '[CASE:E25-T2BB] Do the work again.')
+    const fixed = await waitForRun(String(sT), 'E25-T2BB')
+    expect(fixed.nodeRuns.filter(entry => entry.nodeId === 'work').map(entry => entry.status)).toEqual(['succeeded'])
+    expect(callsFor('E25-T2BB')).toBe(1)
+
+    // Leaving the picker returns the composer to ordinary chat.
+    await clearFlowSelection(page2)
+    const input = page2.locator('[data-composer-input]').first()
+    await input.click()
+    await page2.keyboard.type('plain-after-invalid-route')
+    await page2.keyboard.press('Enter')
+    await page2.getByText('worker handled CASE:NO-CASE').last().waitFor({ timeout: 60_000 })
+  }, 240_000)
+
+  // E28: result files belong to their run and workspace. Previews open the
+  // recorded path, Markdown line links reveal the requested line, localized
+  // and space-bearing names survive, and a deleted file reports not-found.
+  it('E28: result files resolve per run and workspace with line links and missing feedback', async () => {
+    const sA = await createSession('l1-e28-a')
+    const page = await openPage(sA)
+    await startFlowViaComposer(page, 'Files flow', '[CASE:E28-A1CC] [FILES] [MARK:A] Write the result.')
+    const runA = await waitForRun(String(sA), 'E28-A1CC')
+    expect(String(runA.flowId)).toBe(String(flowF))
+    const filerA = runA.nodeRuns.find(entry => entry.nodeId === 'filer')!
+    expect(filerA.files).toEqual([
+      join(filerA.dir!, 'RESULT.md'),
+      join(filerA.dir!, 'notes.txt'),
+      join(filerA.dir!, '结果 报告.md'),
+    ])
+
+    const openResults = async (targetPage: Page, flowRun: FlowRun) => {
+      const card = targetPage.locator('[data-flow-progress]')
+      await card.waitFor({ timeout: 30_000 })
+      await card.getByRole('button', { name: 'View full flow', exact: true }).click()
+      const results = targetPage.locator(`[data-run-results="${String(flowRun.id)}"]`)
+      await results.waitFor({ timeout: 30_000 })
+      return results
+    }
+    // Opening a file moves the right sidebar to the parent Session, so the
+    // results panel is reopened through the progress card for each preview.
+    let resultsA = await openResults(page, runA)
+    const column = page.locator('[data-rightbar-col]')
+    const previewOf = async (results: ReturnType<Page['locator']>, name: string) => {
+      await results.locator('[data-node="filer"] ul').first().locator('li').filter({ hasText: name })
+        .getByRole('button', { name: 'Preview', exact: true }).click()
+    }
+
+    // The narrow layout keeps the results document readable in both themes.
+    const artifacts = fileURLToPath(new URL('../../../.artifacts', import.meta.url))
+    await mkdir(artifacts, { recursive: true })
+    await page.setViewportSize({ width: 420, height: 800 })
+    for (const dark of [false, true]) {
+      await page.evaluate((on) => {
+        if (on) document.body.setAttribute('data-ds-dark-theme', '')
+        else document.body.removeAttribute('data-ds-dark-theme')
+      }, dark)
+      await expect.poll(async () => await resultsA.locator('[data-node="filer"]').count()).toBe(1)
+      await page.screenshot({
+        path: join(artifacts, `agent-flow-e28-results-${dark ? 'dark' : 'light'}.png`),
+        animations: 'disabled',
+      })
+    }
+
+    // The result body's Markdown link carries its line into the text preview.
+    await resultsA.getByRole('button', { name: 'line 3', exact: true }).click()
+    await expect.poll(() => column.locator('[data-textpreview-target="3"]').textContent()).toBe('A line 3\n')
+    await expect.poll(() => column.locator('[data-textpreview-path]').textContent()).toBe(join(filerA.dir!, 'notes.txt'))
+    await page.screenshot({ path: join(artifacts, 'agent-flow-e28-line-preview.png'), animations: 'disabled' })
+
+    // The preview sidebar covers the page at the narrow width, so restore the
+    // ordinary layout before reopening the results panel.
+    await page.setViewportSize({ width: 1280, height: 800 })
+    resultsA = await openResults(page, runA)
+    await previewOf(resultsA, 'RESULT.md')
+    await expect.poll(() => column.locator('[data-textpreview-path]').textContent()).toBe(join(filerA.dir!, 'RESULT.md'))
+    await column.getByRole('heading', { name: 'RESULT A' }).waitFor({ state: 'visible', timeout: 30_000 })
+
+    // A Chinese, space-bearing name resolves as its own resource.
+    resultsA = await openResults(page, runA)
+    await previewOf(resultsA, '结果 报告.md')
+    await expect.poll(() => column.locator('[data-textpreview-path]').textContent()).toBe(join(filerA.dir!, '结果 报告.md'))
+    await column.getByRole('heading', { name: '结果 A' }).waitFor({ state: 'visible', timeout: 30_000 })
+
+    // Back returns to the run surface without leaving a stale results panel.
+    resultsA = await openResults(page, runA)
+    await resultsA.getByRole('button', { name: 'Back to runs', exact: true }).click()
+    await expect.poll(async () => await page.locator('[data-run-results]').count()).toBe(0)
+
+    // A file deleted after the run reports not-found instead of stale content.
+    // The reopened page also proves the record, not client state, owns the path.
+    await rm(join(filerA.dir!, 'RESULT.md'))
+    const reopenPage = await openPage(sA)
+    await openResults(reopenPage, runA)
+    await reopenPage.locator('[data-node="filer"] ul').first().locator('li').filter({ hasText: 'RESULT.md' })
+      .getByRole('button', { name: 'Preview', exact: true }).click()
+    await reopenPage.locator('[data-rightbar-col] [data-textpreview-failed="workspace-file/not-found"]')
+      .waitFor({ timeout: 30_000 })
+
+    // The same Flow in a second workspace resolves that workspace's own file.
+    const secondDir = await mkdtemp(join(homedir(), 'dsh-flow-ws2-'))
+    onTestFinished(async () => { await rm(secondDir, { recursive: true, force: true }) })
+    const secondWorkspace = await scaffold.ctx.workspaceRegistry.create(secondDir)
+    const sB = SessionId('l1-e28-b')
+    await scaffold.ctx.agents.create({
+      sessionId: sB,
+      meta: { cwd: secondDir },
+      agentOptions: scaffold.ctx.agentDefaultModel.currentSelection(),
+    })
+    await secondWorkspace.attachSession(sB)
+    const pageB = await openPage(sB)
+    await startFlowViaComposer(pageB, 'Files flow', '[CASE:E28-B1DD] [FILES] [MARK:B] Write the result.')
+    const runB = await waitForRun(String(sB), 'E28-B1DD')
+    const filerB = runB.nodeRuns.find(entry => entry.nodeId === 'filer')!
+    expect(filerB.dir!.startsWith(secondDir)).toBe(true)
+    const columnB = pageB.locator('[data-rightbar-col]')
+    let resultsB = await openResults(pageB, runB)
+    await resultsB.getByRole('button', { name: 'line 3', exact: true }).click()
+    await expect.poll(() => columnB.locator('[data-textpreview-target="3"]').textContent()).toBe('B line 3\n')
+    await expect.poll(() => columnB.locator('[data-textpreview-path]').textContent()).toBe(join(filerB.dir!, 'notes.txt'))
+    resultsB = await openResults(pageB, runB)
+    await previewOf(resultsB, 'RESULT.md')
+    await expect.poll(() => columnB.locator('[data-textpreview-path]').textContent()).toBe(join(filerB.dir!, 'RESULT.md'))
+    await columnB.getByRole('heading', { name: 'RESULT B' }).waitFor({ state: 'visible', timeout: 30_000 })
   }, 240_000)
 
   it('E17: an interactive node converses over several rounds and settles on the user confirmation', async () => {

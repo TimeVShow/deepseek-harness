@@ -407,8 +407,11 @@ describe('generated Remote chain', () => {
     })
     claimAndSubmit(chain, 'fail please')
     const failed = await waitRun(chain, 'failed')
-    expect(failed.error).toContain('child stopped with "error"')
-    expect(failed.nodeRuns.find(entry => entry.nodeId === 'task1')).toMatchObject({ status: 'failed' })
+    // The node reports the child's recorded failure, not just its stop reason.
+    expect(failed.error).toContain('worker refused')
+    const task1 = failed.nodeRuns.find(entry => entry.nodeId === 'task1')
+    expect(task1).toMatchObject({ status: 'failed' })
+    expect(task1?.error).toContain('worker refused')
     expect(failed.nodeRuns.find(entry => entry.nodeId === 'task2')).toMatchObject({ status: 'skipped' })
     await chain.controller.load()
     expect(chain.controller.state.getSnapshot().runs[0]).toMatchObject({ status: 'failed' })

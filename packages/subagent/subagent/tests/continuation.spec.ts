@@ -3105,7 +3105,7 @@ describe('continuable settlement delivery', () => {
     const child = await loadStoredSession(ctx.sessionPersistence, started.childId)
     expect(hasUserText(child.events, 'second task')).toBe(false)
     expect(settlementNotices(parent)[0]!.text).toBe(
-      `Background subagent ${started.childId} failed before it finished.\nIts closing message:\nthe answer`,
+      `Background subagent ${started.childId} failed before it finished.\nIts closing message:\nthe answer\nENOSPC: no space left on device`,
     )
   })
 

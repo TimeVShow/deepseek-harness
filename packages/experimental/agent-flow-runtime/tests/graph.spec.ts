@@ -677,6 +677,56 @@ describe('Agent Flow graph runtime', () => {
     expect(promptText(secondEng!)).toContain('## Handoff from rev\nplease revise\nResult: rejected\n\nFiles:\nNo files.')
   })
 
+  it('re-executes a twice-rejected loop and settles on the third approval', async () => {
+    const harness = await setup({
+      scripts: {
+        eng: [{ text: 'draft one' }, { text: 'draft two' }, { text: 'draft three' }],
+        rev: [
+          { text: 'revise once\nResult: rejected' },
+          { text: 'revise twice\nResult: rejected' },
+          { text: 'accept\nResult: approved' },
+        ],
+      },
+    })
+    const { service, stub, workspace } = harness
+    const flow = await seed(service, templateId => ({
+      nodes: [start(), agent('eng', templateId, 'draft the answer'), agent('rev', templateId, 'review the draft'), condition('verdict'), end()],
+      edges: [
+        { kind: 'execution', from: 'start', to: 'eng' },
+        { kind: 'execution', from: 'eng', to: 'rev' },
+        { kind: 'execution', from: 'rev', to: 'verdict' },
+        { kind: 'execution', from: 'verdict', to: 'eng', result: 'rejected' },
+        { kind: 'execution', from: 'verdict', to: 'end', result: 'approved' },
+      ],
+    }))
+
+    const run = await startRun(harness, flow, 'write a letter')
+    const settled = await waitForSettled(service, run.id, 'completed')
+
+    // Three writer/reviewer rounds: rejected, rejected, approved.
+    expect(stub.requests.map(request => request.label)).toEqual(['eng', 'rev', 'eng', 'rev', 'eng', 'rev'])
+    expect(stub.requests).toHaveLength(6)
+    const engEntries = settled.nodeRuns.filter(entry => entry.nodeId === 'eng')
+    expect(engEntries.map(entry => [entry.iteration, entry.handoff])).toEqual([
+      [0, 'draft one'],
+      [1, 'draft two'],
+      [2, 'draft three'],
+    ])
+    expect(engEntries.map(entry => entry.dir)).toEqual([
+      join(workspace, '.dsh', 'flows', String(run.id), '00-eng'),
+      join(workspace, '.dsh', 'flows', String(run.id), '01-eng'),
+      join(workspace, '.dsh', 'flows', String(run.id), '02-eng'),
+    ])
+    expect(settled.nodeRuns.filter(entry => entry.nodeId === 'rev').map(entry => [entry.iteration, entry.result]))
+      .toEqual([[0, 'rejected'], [1, 'rejected'], [2, 'approved']])
+    // The third writer reads the latest rejection, and the third reviewer reads
+    // the writer's third draft.
+    expect(promptText(stub.requests[4]!)).toContain('## Handoff from rev\nrevise twice\nResult: rejected')
+    expect(promptText(stub.requests[5]!)).toContain('## Handoff from eng\ndraft three')
+    expect(settled.nodeRuns.filter(entry => entry.nodeId === 'end'))
+      .toMatchObject([{ iteration: 0, status: 'succeeded' }])
+  })
+
   it('runs two serial review blocks in sequence', async () => {
     const harness = await setup({ scripts: {
       a: [{ text: 'draft one' }, { text: 'draft two' }],
@@ -1056,17 +1106,17 @@ describe('Agent Flow graph runtime', () => {
     const count = (label: string): number => harness.stub.requests.filter(request => request.label === label).length
     const requestFor = (label: string) => harness.stub.requests.find(request => request.label === label)!
 
-    // Every round-1 role starts before any of them completes, and summary 1
-    // waits for the blocked branch.
+    // Every round-1 role starts before any of them completes. With two roles
+    // already recorded as succeeded and the third still blocked, the join
+    // issues no summary request; releasing the last role starts it exactly once.
     await vi.waitFor(() => { expect(labels()).toHaveLength(3) })
     expect(labels().sort()).toEqual(['engineer', 'product', 'qa'])
     product.resolve()
     engineer.resolve()
-    await vi.waitFor(() => {
-      expect(count('product')).toBe(1)
-      expect(count('engineer')).toBe(1)
-      expect(count('summary1')).toBe(0)
-    })
+    await waitForNode(harness.service, run.id, 'product', 'succeeded')
+    await waitForNode(harness.service, run.id, 'engineer', 'succeeded')
+    expect(count('summary1')).toBe(0)
+    expect(labels()).toHaveLength(3)
     qa.resolve()
     await vi.waitFor(() => { expect(count('summary1')).toBe(1) })
     expect(promptText(requestFor('summary1'))).toContain('## Handoff from product\nproduct round 1')

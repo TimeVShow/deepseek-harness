@@ -159,6 +159,20 @@ export function epochStopReason(events: readonly SessionEvent[]): SubagentResult
   }
 }
 
+/**
+ * The failure message an epoch-end turn recorded, so a caller can report why a
+ * child stopped instead of only that it did. `TurnEndReason.error` already
+ * carries the model or tool failure the loop logged, and the message is safe to
+ * surface: it is the same text the child Session retains.
+ * @param events - this epoch's own event suffix.
+ * @returns the recorded failure message, or `undefined` for any other ending.
+ */
+export function epochFailureMessage(events: readonly SessionEvent[]): string | undefined {
+  const { end } = foldConsumedWork(events)
+  const reason = end?.data.reason
+  return reason?.kind === 'error' ? reason.error.message : undefined
+}
+
 /** Render any listener-thrown value without letting coercion escape containment. */
 function renderThrown(value: unknown): string {
   try {
