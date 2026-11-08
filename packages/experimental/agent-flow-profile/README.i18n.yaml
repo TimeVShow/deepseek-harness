@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/agent-flow-profile/README.md
+/:
+  en: 39a235a85778196f
+  zh: 8435fd189ed101d7
+/deepseek-ai-dsh-experimental-agent-flow-profile:
+  en: 9dca81ed9385fc86
+  zh: 245745b54d23f0ae
+/deepseek-ai-dsh-experimental-agent-flow-profile/summary:
+  en: f4f6d4c0e6ba749f
+  zh: f9161c17519c5efe
+/deepseek-ai-dsh-experimental-agent-flow-profile/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-experimental-agent-flow-profile/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-experimental-agent-flow-profile/use-this-package/install-into-a-profile:
+  en: cd5a5d1c00de8dcb
+  zh: c0e1ac914463c96d
+/deepseek-ai-dsh-experimental-agent-flow-profile/use-this-package/what-you-get:
+  en: 6ce6ded1fa75af6f
+  zh: 580d7921787af54f
+/deepseek-ai-dsh-experimental-agent-flow-profile/understand-the-implementation:
+  en: c2b030415ff1d8cc
+  zh: f31f974bce22e094
+/deepseek-ai-dsh-experimental-agent-flow-profile/further-exploration:
+  en: 38075c8cfb64bcad
+  zh: 97496f60d4cb1372
+/deepseek-ai-dsh-experimental-agent-flow-profile/model-experience:
+  en: 50fd13216f247281
+  zh: 5eaa76e41f1804c0
+/deepseek-ai-dsh-experimental-agent-flow-profile/model-experience/kv-cache-effect:
+  en: f189cc20ffbc9962
+  zh: 2d671ee28b8b6591
+/deepseek-ai-dsh-experimental-agent-flow-profile/known-limitations-and-deferred-work:
+  en: a1080583b03524fe
+  zh: 1b361f0c9a0dbc46
+/deepseek-ai-dsh-experimental-agent-flow-profile/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3c8bbe93d71a3377

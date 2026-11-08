@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-09-24-agent-flow-plugin-seams.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-24-agent-flow-plugin-seams.md
+/agent-note-give-agent-flow-its-own-service-seam-over-storage-domain:
+  en: bd915d6c9a6ec7ab
+  zh: 16afdf588386e9cb
+/agent-note-give-agent-flow-its-own-service-seam-over-storage-domain/problem:
+  en: 358b9347b7b6f5ce
+  zh: 30f0d706e3cbb3a4
+/agent-note-give-agent-flow-its-own-service-seam-over-storage-domain/decision:
+  en: 59bd2d77613c66a9
+  zh: ee0628223e2f3d92
+/agent-note-give-agent-flow-its-own-service-seam-over-storage-domain/testing:
+  en: 34d13ba19faafe24
+  zh: 3919229c8d62c3a3
+/agent-note-give-agent-flow-its-own-service-seam-over-storage-domain/alternatives-considered:
+  en: e492e4504bd08078
+  zh: a8f4216642f16c0a
+/agent-note-give-agent-flow-its-own-service-seam-over-storage-domain/consequences:
+  en: f24ba61ddb016a29
+  zh: 6d81f33f4dcf35a2

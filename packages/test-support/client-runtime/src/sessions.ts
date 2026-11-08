@@ -356,6 +356,7 @@ export class TestSessions implements ISessions {
       displayTitle: fixture.id,
       running: false,
       blank: false,
+      occupied: false,
       updatedAt: this.records.size + 1,
       ...fixture.summary,
       retainedBy: this.retentionSnapshot(id).retainedBy,

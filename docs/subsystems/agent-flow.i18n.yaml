@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for agent-flow.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/agent-flow.md
+/agent-flow:
+  en: 43eb048b8711457b
+  zh: dddac17fdf093d8e
+/agent-flow/identity:
+  en: 711ed57c61a4d14e
+  zh: c59383d47b62ceba
+/agent-flow/agent-templates:
+  en: 0c11417786240f03
+  zh: f261ebc7840f1a94
+/agent-flow/flow-documents:
+  en: 3ca8d0b10fe01e42
+  zh: 86a827094f57e7cb
+/agent-flow/supported-graphs:
+  en: 8e945a5151ad873b
+  zh: 43a7a82125fbdcb9
+/agent-flow/supported-graphs/support-matrix:
+  en: c97893b7be671ac8
+  zh: 8c6f788e83d9f2eb
+/agent-flow/supported-graphs/local-artifact-scope:
+  en: eb41fbbad688e62e
+  zh: 7c0743690b6b53a6
+/agent-flow/runs:
+  en: 32974a40da755eca
+  zh: 02b0ec9f894075d6
+/agent-flow/executor-seam:
+  en: 3343e8a6622f1de5
+  zh: 3f3394f0cef13290

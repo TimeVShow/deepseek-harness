@@ -51,6 +51,7 @@ import type {
   SessionUpdateQueueValue,
   SessionRequestId,
 } from './types.ts'
+import { sessionUsageOf } from './usage.ts'
 
 type PromptContentCandidate =
   | SessionPromptRequest['content'][number]
@@ -113,6 +114,13 @@ export class SessionCommandController {
         })
       }
     }
+    if (request.sessionId !== undefined && sessionUsageOf(this.ctx)?.isOccupied(request.sessionId) === true) {
+      throw new RemoteError(
+        'session/occupied',
+        `session "${request.sessionId}" carries recorded plugin usage and cannot be adopted as a new blank Session`,
+        { sessionId: request.sessionId },
+      )
+    }
     const cwd = workspace?.path ?? request.cwd ?? this.defaultCwd
     let created: ApiSessionCreated
     try {
@@ -120,7 +128,8 @@ export class SessionCommandController {
         ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
         cwd,
         ...(request.agentPreset === undefined ? {} : { agentPreset: request.agentPreset }),
-        reusable: sessionId => !this.ctx.workspaceRegistry.archivedSessionIds.includes(sessionId)
+        reusable: sessionId => sessionUsageOf(this.ctx)?.isOccupied(sessionId) !== true
+          && !this.ctx.workspaceRegistry.archivedSessionIds.includes(sessionId)
           && (workspace === undefined || workspace.sessionIds.includes(sessionId)),
       })
     } catch (error) {

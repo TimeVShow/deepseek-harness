@@ -158,6 +158,8 @@ export interface SessionSummary {
   readonly updatedAt: number
   readonly running: boolean
   readonly blank: boolean
+  /** Durable plugin usage occupies this Session beyond its turn history. */
+  readonly occupied?: boolean
   readonly parentSessionId?: SessionId
   readonly origin?: 'subagent'
   readonly cwd?: string
@@ -192,6 +194,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     }
     'session/projections-unavailable': Record<string, never>
     'session/writer-held': { readonly sessionId: SessionId }
+    'session/occupied': { readonly sessionId: SessionId }
     'session/agent-busy': { readonly reason: string }
     'session/invalid-time-zone': { readonly value: string }
     'session/workspace-attach-failed': { readonly sessionId: SessionId; readonly workspaceId: string }

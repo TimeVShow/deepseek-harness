@@ -1,0 +1,64 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/agent-flow-runtime/README.md
+/:
+  en: e3ab39fd1642100e
+  zh: d9f6895540bcb6eb
+/deepseek-ai-dsh-experimental-agent-flow-runtime:
+  en: 4397202567985b59
+  zh: 9aea8e89f60d8e17
+/deepseek-ai-dsh-experimental-agent-flow-runtime/summary:
+  en: 552f1c34472d7ad4
+  zh: 45e34c6b2bdf2afb
+/deepseek-ai-dsh-experimental-agent-flow-runtime/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-experimental-agent-flow-runtime/use-this-package:
+  en: 4142adda93acd973
+  zh: 4843954a9aec596f
+/deepseek-ai-dsh-experimental-agent-flow-runtime/use-this-package/when-to-choose-it:
+  en: 607d33a6a86f24a1
+  zh: f2cd3bc77f40005b
+/deepseek-ai-dsh-experimental-agent-flow-runtime/use-this-package/minimal-configuration:
+  en: c6dc756cbd98a298
+  zh: b64e0842f437a9d5
+/deepseek-ai-dsh-experimental-agent-flow-runtime/understand-the-implementation:
+  en: a8da3e8dabbdac94
+  zh: 6c1d0bbb7463382a
+/deepseek-ai-dsh-experimental-agent-flow-runtime/further-exploration:
+  en: abd461825db0444e
+  zh: dc0ff30dec2d0839
+/deepseek-ai-dsh-experimental-agent-flow-runtime/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-agent-flow-runtime/model-experience/worker-node-delegation:
+  en: c548aa32ef379a2d
+  zh: 335939bead77621f
+/deepseek-ai-dsh-experimental-agent-flow-runtime/model-experience/worker-node-delegation/what-the-model-sees:
+  en: c15c48e78e0e0a16
+  zh: 218a24d66e9efc2c
+/deepseek-ai-dsh-experimental-agent-flow-runtime/model-experience/worker-node-delegation/token-effect:
+  en: a62c7ac80584ce81
+  zh: 31be7fb8fa5f0481
+/deepseek-ai-dsh-experimental-agent-flow-runtime/model-experience/worker-node-delegation/kv-cache-effect:
+  en: 0e0f3e8df0d3dadc
+  zh: 10316f62c543f87e
+/deepseek-ai-dsh-experimental-agent-flow-runtime/model-experience/interactive-node-conversation:
+  en: 604e2de763d49b8b
+  zh: c0fb95e225b0ffe2
+/deepseek-ai-dsh-experimental-agent-flow-runtime/model-experience/interactive-node-conversation/what-the-model-sees:
+  en: b3963c0565fa97c1
+  zh: c09c90de83742573
+/deepseek-ai-dsh-experimental-agent-flow-runtime/model-experience/interactive-node-conversation/token-effect:
+  en: 1e8cddf75254469a
+  zh: 2a14da4a01684de5
+/deepseek-ai-dsh-experimental-agent-flow-runtime/model-experience/interactive-node-conversation/kv-cache-effect:
+  en: e5382a2df7160613
+  zh: 70dc0a79f0b76540
+/deepseek-ai-dsh-experimental-agent-flow-runtime/known-limitations-and-deferred-work:
+  en: 9897ec244981bf0e
+  zh: a01bd14553ead0d8
+/deepseek-ai-dsh-experimental-agent-flow-runtime/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3c8bbe93d71a3377

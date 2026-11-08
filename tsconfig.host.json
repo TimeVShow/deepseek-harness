@@ -9,6 +9,8 @@
   },
   "include": [
     "apps/web/tests/sidebar-drawer.e2e.ts",
+    "apps/web/tests/agent-flow-l1-identity.e2e.ts",
+    "apps/web/tests/agent-flow-session-isolation.e2e.ts",
     "apps/web/tests/creation-recommendations.e2e.ts",
     "apps/web/tests/plugin-recommendations.e2e.ts",
     "apps/web/tests/japanese-plugin-metadata.e2e.ts",
@@ -550,6 +552,9 @@
     { "path": "./packages/jobs/tool-jobs" },
     { "path": "./packages/experimental/agent-team" },
     { "path": "./packages/experimental/agent-team-profile" },
+    { "path": "./packages/experimental/agent-flow" },
+    { "path": "./packages/experimental/agent-flow-runtime" },
+    { "path": "./packages/experimental/agent-flow-profile" },
     { "path": "./packages/experimental/inspector-profile" },
     { "path": "./packages/experimental/liveshare-protocol/tsconfig.host.json" },
     { "path": "./packages/experimental/liveshare/tsconfig.host.json" },

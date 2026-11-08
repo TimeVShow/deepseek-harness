@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-11-04-agent-flow-progress-card.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-04-agent-flow-progress-card.md
+/agent-note-derive-the-agent-flow-progress-card-from-run-records-only:
+  en: 3c7681896d7db73a
+  zh: 35dc6ba8541fca62
+/agent-note-derive-the-agent-flow-progress-card-from-run-records-only/problem:
+  en: 072ea3ce19eb1de0
+  zh: 08d6d5ddbbf02388
+/agent-note-derive-the-agent-flow-progress-card-from-run-records-only/decision:
+  en: db8777f5e26d5590
+  zh: 5b91c956c5655f84
+/agent-note-derive-the-agent-flow-progress-card-from-run-records-only/testing:
+  en: 18b069cdb29cceac
+  zh: 6a15a215282121c0
+/agent-note-derive-the-agent-flow-progress-card-from-run-records-only/alternatives-considered:
+  en: 413f314ffde9c446
+  zh: 95ff89589bd6a6e0
+/agent-note-derive-the-agent-flow-progress-card-from-run-records-only/consequences:
+  en: 00931c6b97d4f5c9
+  zh: 08f7427835507399

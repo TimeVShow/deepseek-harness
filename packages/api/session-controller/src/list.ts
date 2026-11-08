@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-session-projection-cache'
 import { SessionQueryError, type SessionRecord, type SessionSearchCursor } from '@deepseek-ai/dsh-session-query'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { z } from 'zod'
+import { sessionUsageOf } from './usage.ts'
 import {
   SESSION_SEARCH_RESULT_LIMIT,
   SESSION_SEARCH_SNIPPET_MAX_CODE_POINTS,
@@ -132,6 +133,7 @@ export class ApiSessionList {
       formatStatus: 'current',
       running: this.ctx.agents.get(session.id)?.status === 'running',
       blank: metadata.blank,
+      occupied: sessionUsageOf(this.ctx)?.isOccupied(session.id) ?? false,
       ...listFields(session.header),
       ...(projections === undefined ? {} : { projections }),
     }
@@ -188,6 +190,7 @@ export class ApiSessionList {
       running: false,
       // A large, metadata-less, or inaccessible cache miss remains unknown and visible.
       blank: metadata?.blank ?? false,
+      occupied: sessionUsageOf(this.ctx)?.isOccupied(header.id) ?? false,
       ...listFields(header),
       ...(projections === undefined ? {} : { projections }),
     }

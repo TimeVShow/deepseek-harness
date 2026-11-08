@@ -1,0 +1,15 @@
+# L1 acceptance lane: the real agent-flow service and graph executor over the
+# real LLM service, with the model wire replaced by the scripted provider.
+- insert:
+    - id: agent-flow
+      name: '@deepseek-ai/dsh-experimental-agent-flow'
+    - id: agent-flow-runtime
+      name: '@deepseek-ai/dsh-experimental-agent-flow-runtime'
+    - id: agent-flow-ui
+      name: '@deepseek-ai/dsh-experimental-client-ui-agent-flow'
+    - id: agent-flow-scripted-llm
+      name: ./scripted-llm.js
+    # The lane owns the deepseek-official route, so the keyed adapter must not
+    # also register it.
+    - id: llm-deepseek
+      disabled: true

@@ -1,0 +1,49 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/client-ui-agent-flow/README.md
+/:
+  en: 718c6a436de715b5
+  zh: 37b31c626e5b1a26
+/deepseek-ai-dsh-experimental-client-ui-agent-flow:
+  en: 89856d0fa55d254f
+  zh: e88f4fdce749841e
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/summary:
+  en: 9ea95363cf531eaf
+  zh: e5c81b1075cca9c2
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/use-this-package:
+  en: 808051e8dcbccb81
+  zh: 2c751acdaf69cb84
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/use-this-package/author-a-flow-and-watch-its-runs:
+  en: 862936127388972f
+  zh: 3fb9c58700b528f9
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/use-this-package/start-a-run-from-the-composer:
+  en: 7d673407b146db7b
+  zh: 8e44d211d08af453
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/use-this-package/track-a-run-above-the-composer:
+  en: 715714f8bcfa9cc5
+  zh: 8da62c7c0911ec66
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/use-this-package/manage-agents:
+  en: 38c70baa6ea5536d
+  zh: 8e1b3008e67b9231
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/understand-the-implementation:
+  en: a8dc89f59bb48eb9
+  zh: 0d2bc376332ea6d8
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/further-exploration:
+  en: 2edb3f6b8981c879
+  zh: 6d7aec13edc249a5
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/model-experience:
+  en: 8a4cd90b8a93d885
+  zh: f07dd78f04b6d2f7
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/model-experience/kv-cache-effect:
+  en: f61676fe34dfbf49
+  zh: 390fb90e18e8ec2b
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/known-limitations-and-deferred-work:
+  en: ca53726144091594
+  zh: be5a654641692e96
+/deepseek-ai-dsh-experimental-client-ui-agent-flow/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3c8bbe93d71a3377

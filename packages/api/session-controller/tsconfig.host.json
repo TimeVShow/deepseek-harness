@@ -25,7 +25,8 @@
     "src/list.ts",
     "src/media-references.ts",
     "src/archived-session-gate.ts",
-    "src/skill-catalog.ts"
+    "src/skill-catalog.ts",
+    "src/usage.ts"
   ],
   "references": [
     {

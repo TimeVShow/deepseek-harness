@@ -528,7 +528,7 @@ export class SessionManager {
     const result = await this.remote.session.create(payload)
     if (result.ok) {
       this.recordMutation({ kind: 'placeholder', summary: { agentAvailable: true,
-        sessionId: result.value.sessionId, updatedAt: Date.now(), running: false, blank: true,
+        sessionId: result.value.sessionId, updatedAt: Date.now(), running: false, blank: true, occupied: false,
         ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
       } })
     } else {
@@ -542,6 +542,7 @@ export class SessionManager {
           updatedAt: Date.now(),
           running: false,
           blank: true,
+          occupied: false,
         } })
       }
     }
@@ -572,7 +573,7 @@ export class SessionManager {
       : workspaceAttachSessionId(result.error)
     if (childId !== undefined) {
       this.recordMutation({ kind: 'placeholder', summary: { agentAvailable: true,
-        sessionId: childId, updatedAt: Date.now(), running: false, blank: true,
+        sessionId: childId, updatedAt: Date.now(), running: false, blank: true, occupied: false,
         ...(source?.cwd !== undefined ? { cwd: source.cwd } : {}),
       } })
     }
@@ -802,7 +803,7 @@ export class SessionManager {
       const prev = this.entryCache.get(entry.sessionId)
       if (
         prev !== undefined && prev.updatedAt === entry.updatedAt && prev.running === entry.running
-        && prev.blank === entry.blank
+        && prev.blank === entry.blank && prev.occupied === entry.occupied
         && prev.parentSessionId === entry.parentSessionId && prev.cwd === entry.cwd
         && prev.origin === entry.origin && prev.title === entry.title && prev.depth === entry.depth
         && prev.formatStatus === entry.formatStatus
@@ -845,6 +846,7 @@ function applyMutation(summaries: readonly SessionSummary[], mutation: SessionLi
         ...(mutation.kind === 'upsert' ? {
           agentAvailable: mutation.summary.agentAvailable,
           running: mutation.summary.running,
+          occupied: mutation.summary.occupied,
           ...(mutation.summary.formatStatus === undefined ? {} : { formatStatus: mutation.summary.formatStatus }),
         } : {}),
         ...(existing.cwd === undefined && mutation.summary.cwd !== undefined ? { cwd: mutation.summary.cwd } : {}),
@@ -856,6 +858,7 @@ function applyMutation(summaries: readonly SessionSummary[], mutation: SessionLi
       if (filled.cwd === existing.cwd && filled.parentSessionId === existing.parentSessionId
         && filled.origin === existing.origin && filled.blank === existing.blank
         && filled.agentAvailable === existing.agentAvailable && filled.running === existing.running
+        && filled.occupied === existing.occupied
         && filled.formatStatus === existing.formatStatus
       ) return [...summaries]
       return summaries.map(summary => summary.sessionId === mutation.summary.sessionId ? filled : summary)

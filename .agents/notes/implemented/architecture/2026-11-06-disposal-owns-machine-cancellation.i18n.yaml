@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-11-06-disposal-owns-machine-cancellation.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-11-06-disposal-owns-machine-cancellation.md
+/agent-note-disposal-owns-machine-cancellation:
+  en: 3c697217e4894bf8
+  zh: 47efaefede5e262a
+/agent-note-disposal-owns-machine-cancellation/problem:
+  en: 4312961d55e16b57
+  zh: 788466c74ccaa92e
+/agent-note-disposal-owns-machine-cancellation/decision:
+  en: f18603fc3899846a
+  zh: f7ad012128bfec21
+/agent-note-disposal-owns-machine-cancellation/verification:
+  en: 0f5cd1dde88f06d7
+  zh: 9c8be6df04d17d76
+/agent-note-disposal-owns-machine-cancellation/alternatives-considered:
+  en: a7852fb072591212
+  zh: 4a15cad46822820d
+/agent-note-disposal-owns-machine-cancellation/consequences:
+  en: c7e832db179d4666
+  zh: 75b07aa77836992d

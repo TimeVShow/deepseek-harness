@@ -1,0 +1,52 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/agent-flow/README.md
+/:
+  en: 11308505b2b4395f
+  zh: 9131fc48f56478b7
+/deepseek-ai-dsh-experimental-agent-flow:
+  en: 304b987d2b0f7459
+  zh: eaef747c6309e7fa
+/deepseek-ai-dsh-experimental-agent-flow/summary:
+  en: c47d19bb5f7a30a2
+  zh: 23039012f2c34452
+/deepseek-ai-dsh-experimental-agent-flow/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-experimental-agent-flow/use-this-package:
+  en: 8d2c3600ffaced93
+  zh: 24dc99766aba6f64
+/deepseek-ai-dsh-experimental-agent-flow/use-this-package/when-to-choose-it:
+  en: 2848d13de4c98da6
+  zh: 581694b6af85df60
+/deepseek-ai-dsh-experimental-agent-flow/use-this-package/minimal-configuration:
+  en: 4fa5864ee40f10d9
+  zh: ec5a91d78853710a
+/deepseek-ai-dsh-experimental-agent-flow/understand-the-implementation:
+  en: 87cf3201e7fe2915
+  zh: d85964eb143a4970
+/deepseek-ai-dsh-experimental-agent-flow/further-exploration:
+  en: 037ee48c0d794948
+  zh: e50ea3befdba36f0
+/deepseek-ai-dsh-experimental-agent-flow/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-agent-flow/model-experience/durable-workflow-documents:
+  en: 6df602ca0845e6bc
+  zh: c81feb49b6327515
+/deepseek-ai-dsh-experimental-agent-flow/model-experience/durable-workflow-documents/what-the-model-sees:
+  en: 32fe398a76f0d91f
+  zh: 60d5bcbe222afe7f
+/deepseek-ai-dsh-experimental-agent-flow/model-experience/durable-workflow-documents/token-effect:
+  en: 2d6ab1c549d3f683
+  zh: 3ab43d7a0970421b
+/deepseek-ai-dsh-experimental-agent-flow/model-experience/durable-workflow-documents/kv-cache-effect:
+  en: 8cb55f77de6473b3
+  zh: 633d5cf5f29b79ce
+/deepseek-ai-dsh-experimental-agent-flow/known-limitations-and-deferred-work:
+  en: 5594a8aabd4dff1d
+  zh: 6ef293d60f0ba136
+/deepseek-ai-dsh-experimental-agent-flow/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 1d589cea2b370a7d

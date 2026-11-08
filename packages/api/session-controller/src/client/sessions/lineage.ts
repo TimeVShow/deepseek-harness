@@ -29,6 +29,8 @@ export interface SessionListEntry {
    * `sessionListMetadata`; lists hide blank sessions (filtering stays with the consumer).
    */
   blank: boolean
+  /** Durable plugin usage occupies this row's Session, excluding it from blank reuse. */
+  occupied?: boolean
   parentSessionId?: SessionId
   /** Coarse durable origin for navigation filtering; not a continuation capability. */
   origin?: 'subagent'
